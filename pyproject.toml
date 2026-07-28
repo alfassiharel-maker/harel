@@ -1,0 +1,118 @@
+[project]
+name = "ai-sports-coach"
+version = "0.1.0"
+description = "AI Sports Coach Platform — backend and analytics engine"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "--strict-markers --strict-config -ra"
+markers = [
+    "security: tenant isolation, auth, webhook and ledger tests — cannot be skipped",
+    "integration: needs Postgres and Redis",
+    "slow: excluded from the fast local loop",
+    "ai_eval: costs money; runs nightly, not per commit",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # import order
+    "N",         # naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "S",         # bandit — security
+    "C4",        # comprehensions
+    "DTZ",       # naive datetime usage: every timestamp must be tz-aware
+    "T20",       # no print()
+    "SIM",       # simplify
+    "RUF",
+]
+ignore = [
+    "S101",      # assert is fine in tests
+    "E501",      # line length is handled by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "DTZ001"]   # fixture secrets and fixed dates are intentional
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+strict_equality = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# The analytics engine is the layer that must never drift.
+module = "backend.algorithms.*"
+strict = true
+
+# -----------------------------------------------------------------------------
+# Architecture contract — the layering rule from docs/01 §3, enforced in CI.
+# A violation here is a design regression, not a style issue.
+# -----------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "backend"
+
+[[tool.importlinter.contracts]]
+name = "The analytics engine depends on nothing in this project"
+type = "forbidden"
+source_modules = ["backend.algorithms"]
+forbidden_modules = [
+    "backend.api",
+    "backend.modules",
+    "backend.integrations",
+    "backend.workers",
+    "backend.database",
+    "backend.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "Layers are respected"
+type = "layers"
+layers = [
+    "backend.api",
+    "backend.modules",
+    "backend.integrations",
+    "backend.algorithms",
+]
+
+[[tool.importlinter.contracts]]
+name = "Modules are independent — cross-module access goes through service only"
+type = "independence"
+modules = [
+    "backend.modules.identity",
+    "backend.modules.training",
+    "backend.modules.coaching",
+    "backend.modules.billing",
+    "backend.modules.rewards",
+    "backend.modules.partners",
+    "backend.modules.community",
+    "backend.modules.notifications",
+]
+
+[[tool.importlinter.contracts]]
+name = "The API layer never touches repositories or ORM models directly"
+type = "forbidden"
+source_modules = ["backend.api"]
+forbidden_modules = [
+    "backend.modules.identity.repository",
+    "backend.modules.training.repository",
+    "backend.modules.coaching.repository",
+    "backend.modules.billing.repository",
+    "backend.modules.rewards.repository",
+    "backend.modules.partners.repository",
+    "backend.modules.community.repository",
+    "backend.modules.notifications.repository",
+]

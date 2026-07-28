@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+.expo/
+*.tsbuildinfo
+
+# Secrets — never commit any of these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.mobileprovision
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# Local data
+*.sqlite3
+*.db
+/data/
+/tmp/
+/scratch/
+
+# ML artefacts — models are versioned in the registry, not in git
+ml/artifacts/
+*.pkl
+*.joblib
+*.onnx
+
+# Editors / OS
+.idea/
+.vscode/
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

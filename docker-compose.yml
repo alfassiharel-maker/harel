@@ -1,0 +1,61 @@
+# Local development only. Not a production topology.
+#
+# Note: this compose file starts Postgres and Redis but does NOT create the
+# schema. Migrations are reviewed and applied by a developer — see
+# database/README.md. There is no init-script mount here on purpose.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aisportscoach
+      # Local-only credentials. Production uses the platform secrets manager.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: localdev
+      # Deterministic collation so index behaviour matches CI and production.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aisportscoach"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command:
+      # Surface slow queries during development so an N+1 is obvious early.
+      - postgres
+      - -c
+      - log_min_duration_statement=200
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    # No persistence locally: Redis is cache and queue, never a source of truth
+    # (ADR-002). Losing it must be survivable, and testing that locally is useful.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Uncomment once the API exists (Phase 1).
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/Dockerfile
+  #   env_file: .env
+  #   ports: ["8000:8000"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     redis:    { condition: service_healthy }
+  #   # Non-root, per docs/06 §9 A05.
+  #   user: "10001:10001"
+
+volumes:
+  postgres_data:

@@ -1,0 +1,51 @@
+# Runtime dependencies. Pinned exactly: an unpinned dependency is an unreviewed
+# production change (docs/06 §9, A06). Regenerate hashes with pip-compile before
+# production deploys.
+#
+# NOTE: backend/algorithms/ deliberately requires NONE of these (ADR-003). The
+# analytics suite runs on a bare Python 3.11.
+
+# --- Web ----------------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+orjson==3.10.13
+
+# --- Data ---------------------------------------------------------------------
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0                 # used for model metadata + drift check, NOT to apply migrations
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+
+# --- Auth and crypto ----------------------------------------------------------
+pyjwt[crypto]==2.10.1
+argon2-cffi==23.1.0
+cryptography==44.0.0
+
+# --- Cache and queue ----------------------------------------------------------
+redis==5.2.1
+arq==0.26.3                     # ADR-006
+
+# --- HTTP clients -------------------------------------------------------------
+httpx==0.28.1
+tenacity==9.0.0                 # provider retry with backoff
+
+# --- AI -----------------------------------------------------------------------
+anthropic==0.42.0               # ADR-011: behind an LLMProvider protocol
+
+# --- Batch analytics and ML (ADR-004: batch layer only, never in algorithms/) --
+numpy==2.2.1
+pandas==2.2.3
+scipy==1.15.0
+scikit-learn==1.6.0
+joblib==1.4.2
+
+# --- Observability ------------------------------------------------------------
+structlog==24.4.0
+sentry-sdk==2.19.2
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+opentelemetry-instrumentation-asyncpg==0.50b0
