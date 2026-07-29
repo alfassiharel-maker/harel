@@ -54,9 +54,7 @@ class TestDecoupling(unittest.TestCase):
         self.assertGreater(value, 0.0)
 
     def test_missing_heart_rate_makes_decoupling_undefined(self) -> None:
-        self.assertIsNone(
-            efficiency.decoupling_pct(HalfSplit(avg_power=200.0), HalfSplit(avg_power=200.0))
-        )
+        self.assertIsNone(efficiency.decoupling_pct(HalfSplit(avg_power=200.0), HalfSplit(avg_power=200.0)))
 
 
 class TestOneRepMax(unittest.TestCase):
@@ -89,7 +87,7 @@ class TestBaselineComparison(unittest.TestCase):
         self.assertTrue(result.is_improvement)
 
     def test_the_spec_example_reads_as_eight_percent_worse(self) -> None:
-        """"8% less efficient than your average" must come out as -8."""
+        """ "8% less efficient than your average" must come out as -8."""
         result = efficiency.compare_to_baseline("ei", 0.92, [1.00, 1.00, 1.00])
         self.assertAlmostEqual(result.delta_pct, -8.0)
         self.assertFalse(result.is_improvement)

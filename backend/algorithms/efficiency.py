@@ -15,15 +15,15 @@ from .stats import mean
 from .types import ActivitySummary, AthleteProfile, EfficiencyResult, HalfSplit, Sport
 
 __all__ = [
-    "running_efficiency_index",
+    "GOOD_DECOUPLING_THRESHOLD_PCT",
+    "compare_to_baseline",
     "cycling_efficiency_factor",
-    "swolf",
-    "stroke_index",
     "decoupling_pct",
     "estimated_1rm",
-    "compare_to_baseline",
+    "running_efficiency_index",
     "session_efficiency",
-    "GOOD_DECOUPLING_THRESHOLD_PCT",
+    "stroke_index",
+    "swolf",
 ]
 
 # Below 5% aerobic decoupling over a steady effort is the usual marker of

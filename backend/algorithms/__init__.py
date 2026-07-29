@@ -31,9 +31,9 @@ from __future__ import annotations
 
 from . import efficiency, injury_risk, performance, plan, recovery, stats, training_load, zones
 from .types import (
+    ActivitySummary,
     Adaptation,
     AdaptedSession,
-    ActivitySummary,
     AthleteProfile,
     DailyWellness,
     Driver,
@@ -60,19 +60,10 @@ from .types import (
 __version__ = "0.1.0"
 
 __all__ = [
-    # modules
-    "stats",
-    "zones",
-    "training_load",
-    "recovery",
-    "efficiency",
-    "injury_risk",
-    "performance",
-    "plan",
+    "ActivitySummary",
     # types
     "Adaptation",
     "AdaptedSession",
-    "ActivitySummary",
     "AthleteProfile",
     "DailyWellness",
     "Driver",
@@ -95,4 +86,13 @@ __all__ = [
     "TrainingPlan",
     "WeekPlan",
     "__version__",
+    "efficiency",
+    "injury_risk",
+    "performance",
+    "plan",
+    "recovery",
+    # modules
+    "stats",
+    "training_load",
+    "zones",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import unittest
 from datetime import date, timedelta
 
@@ -21,16 +22,16 @@ START = date(2026, 7, 6)
 
 
 def request(**overrides) -> planning.PlanRequest:
-    defaults = dict(
-        goal=Goal.RACE_TIME,
-        primary_sport=Sport.RUN,
-        start_date=START,
-        weeks=12,
-        sessions_per_week=5,
-        level=Level.INTERMEDIATE,
-        current_ctl=40.0,
-        race_date=START + timedelta(weeks=12),
-    )
+    defaults = {
+        "goal": Goal.RACE_TIME,
+        "primary_sport": Sport.RUN,
+        "start_date": START,
+        "weeks": 12,
+        "sessions_per_week": 5,
+        "level": Level.INTERMEDIATE,
+        "current_ctl": 40.0,
+        "race_date": START + timedelta(weeks=12),
+    }
     defaults.update(overrides)
     return planning.PlanRequest(**defaults)
 
@@ -135,7 +136,7 @@ class TestPeriodisation(unittest.TestCase):
                     for week in result.weeks
                     if not week.is_recovery_week and week.phase is not TrainingPhase.TAPER
                 ]
-                for previous, current in zip(loading, loading[1:]):
+                for previous, current in itertools.pairwise(loading):
                     increase = 100.0 * (current - previous) / previous
                     # target_load is rounded to 0.1, worth ~0.03pp of noise in
                     # the ratio; the tolerance sits above that and far below any
@@ -154,9 +155,7 @@ class TestPeriodisation(unittest.TestCase):
             rebound = result.weeks[index + 1].target_load
             with self.subTest(week=index):
                 self.assertLess(week.target_load, previous_loading)
-                self.assertLessEqual(
-                    100.0 * (rebound - previous_loading) / previous_loading, cap + 0.1
-                )
+                self.assertLessEqual(100.0 * (rebound - previous_loading) / previous_loading, cap + 0.1)
 
     def test_beginners_ramp_more_slowly_than_advanced_athletes(self) -> None:
         beginner = planning.generate_plan(request(level=Level.BEGINNER), profile())
@@ -212,15 +211,15 @@ class TestMultisport(unittest.TestCase):
 
 class TestDailyAdaptation(unittest.TestCase):
     def _session(self, **overrides) -> SessionPlan:
-        defaults = dict(
-            day_offset=0,
-            sport=Sport.RUN,
-            title="Key Run Threshold",
-            target_load=90.0,
-            duration_min=60,
-            intensity="threshold",
-            is_key_session=True,
-        )
+        defaults = {
+            "day_offset": 0,
+            "sport": Sport.RUN,
+            "title": "Key Run Threshold",
+            "target_load": 90.0,
+            "duration_min": 60,
+            "intensity": "threshold",
+            "is_key_session": True,
+        }
         defaults.update(overrides)
         return SessionPlan(**defaults)
 
@@ -237,7 +236,9 @@ class TestDailyAdaptation(unittest.TestCase):
         self.assertLess(result.session.target_load, 90.0)
 
     def test_moderate_readiness_trims_volume_on_an_easy_session(self) -> None:
-        result = planning.adapt_today(self._session(intensity="easy", is_key_session=False), readiness_result(60.0))
+        result = planning.adapt_today(
+            self._session(intensity="easy", is_key_session=False), readiness_result(60.0)
+        )
         self.assertIs(result.action, Adaptation.REDUCE_VOLUME)
         assert result.session is not None
         self.assertEqual(result.session.duration_min, 48)

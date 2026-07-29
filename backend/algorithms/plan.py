@@ -36,7 +36,7 @@ from .types import (
     WeekPlan,
 )
 
-__all__ = ["PlanRequest", "generate_plan", "adapt_today", "RAMP_CAP_BY_LEVEL", "LOAD_PER_HOUR"]
+__all__ = ["LOAD_PER_HOUR", "RAMP_CAP_BY_LEVEL", "PlanRequest", "adapt_today", "generate_plan"]
 
 # Weekly ramp ceilings. Deliberately conservative for beginners: the ramp rate
 # an experienced athlete tolerates is the one that injures a novice.
@@ -49,11 +49,11 @@ RAMP_CAP_BY_LEVEL: dict[Level, float] = {
 # Load accrued per hour at each intensity, from 100 x IF^2 at the representative
 # intensity factor for that band.
 LOAD_PER_HOUR: dict[str, float] = {
-    "recovery": 36.0,   # IF 0.60
-    "easy": 49.0,       # IF 0.70
-    "tempo": 72.0,      # IF 0.85
+    "recovery": 36.0,  # IF 0.60
+    "easy": 49.0,  # IF 0.70
+    "tempo": 72.0,  # IF 0.85
     "threshold": 96.0,  # IF 0.98
-    "vo2max": 117.0,    # IF 1.08
+    "vo2max": 117.0,  # IF 1.08
 }
 
 # Minimum weekly load we will plan for, by level, when an athlete has no
@@ -153,7 +153,11 @@ def _rotate_sports(request: PlanRequest, count: int) -> list[Sport]:
     out: list[Sport] = []
     for index in range(count):
         # Every other slot goes to the primary sport.
-        out.append(request.primary_sport if index % 2 == 0 else rotation[1 + (index // 2) % len(request.secondary_sports)])
+        out.append(
+            request.primary_sport
+            if index % 2 == 0
+            else rotation[1 + (index // 2) % len(request.secondary_sports)]
+        )
     return out
 
 
@@ -199,7 +203,7 @@ def generate_plan(request: PlanRequest, profile: AthleteProfile | None = None) -
         total_share = sum(share for _, _, share in template) or 1.0
 
         sessions: list[SessionPlan] = []
-        for slot, ((intensity, is_key, share), sport) in enumerate(zip(template, sports)):
+        for slot, ((intensity, is_key, share), sport) in enumerate(zip(template, sports, strict=False)):
             session_load = target_load * share / total_share
             duration_min = int(round(60.0 * session_load / LOAD_PER_HOUR[intensity]))
             sessions.append(
@@ -349,7 +353,10 @@ def adapt_today(
                 intensity=downgraded_intensity,
                 duration_min=max(20, int(session.duration_min * 0.9)),
                 target_load=round(
-                    session.target_load * LOAD_PER_HOUR[downgraded_intensity] / LOAD_PER_HOUR[session.intensity], 1
+                    session.target_load
+                    * LOAD_PER_HOUR[downgraded_intensity]
+                    / LOAD_PER_HOUR[session.intensity],
+                    1,
                 ),
                 notes=_session_notes(downgraded_intensity),
             )
@@ -369,13 +376,19 @@ def adapt_today(
             reason=f"Readiness {score:.0f}/100, held back by {top_driver}. Volume trimmed 20%.",
         )
 
-    if risk_result is not None and risk_result.band is RiskBand.VERY_HIGH and session.intensity in ("vo2max", "threshold"):
+    if (
+        risk_result is not None
+        and risk_result.band is RiskBand.VERY_HIGH
+        and session.intensity in ("vo2max", "threshold")
+    ):
         # Readiness alone says green, but the load pattern says otherwise.
         capped = dataclasses.replace(
             session,
             intensity="tempo",
             duration_min=max(20, int(session.duration_min * 0.85)),
-            target_load=round(session.target_load * LOAD_PER_HOUR["tempo"] / LOAD_PER_HOUR[session.intensity], 1),
+            target_load=round(
+                session.target_load * LOAD_PER_HOUR["tempo"] / LOAD_PER_HOUR[session.intensity], 1
+            ),
             notes=_session_notes("tempo"),
         )
         return AdaptedSession(

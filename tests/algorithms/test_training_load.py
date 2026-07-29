@@ -5,7 +5,7 @@ import unittest
 from datetime import timedelta
 
 from backend.algorithms import training_load as tl
-from backend.algorithms.types import LoadSource, Sex, Sport
+from backend.algorithms.types import LoadSource, Sex
 
 from ._fixtures import (
     REF_DAY,
@@ -180,8 +180,7 @@ class TestDailySeries(unittest.TestCase):
         series = tl.daily_load_series([bike_activity(), run_activity()], athlete)
         self.assertEqual(list(series), [REF_DAY])
         expected = (
-            tl.training_load(bike_activity(), athlete).score
-            + tl.training_load(run_activity(), athlete).score
+            tl.training_load(bike_activity(), athlete).score + tl.training_load(run_activity(), athlete).score
         )
         self.assertAlmostEqual(series[REF_DAY], expected, places=6)
 

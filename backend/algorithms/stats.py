@@ -11,23 +11,23 @@ import math
 from collections.abc import Sequence
 
 __all__ = [
-    "clamp",
-    "mean",
-    "stdev",
-    "median",
-    "mad",
-    "coefficient_of_variation",
-    "smallest_worthwhile_change",
-    "z_score",
-    "robust_z_score",
-    "percentile",
-    "ewma",
-    "rolling_sum",
-    "rolling_mean",
-    "linear_regression",
     "LinearFit",
+    "clamp",
+    "coefficient_of_variation",
+    "ewma",
+    "linear_regression",
+    "mad",
+    "mean",
+    "median",
     "normal_cdf",
+    "percentile",
     "probability_below",
+    "robust_z_score",
+    "rolling_mean",
+    "rolling_sum",
+    "smallest_worthwhile_change",
+    "stdev",
+    "z_score",
 ]
 
 
@@ -178,7 +178,7 @@ class LinearFit:
     """Ordinary least squares fit of y on x, plus what is needed to put an
     interval around a forecast."""
 
-    __slots__ = ("slope", "intercept", "r_squared", "residual_sd", "n", "_x_mean", "_sxx")
+    __slots__ = ("_sxx", "_x_mean", "intercept", "n", "r_squared", "residual_sd", "slope")
 
     def __init__(
         self,
@@ -232,16 +232,16 @@ def linear_regression(
     if total_weight <= 0:
         raise ValueError("weights must sum to a positive value")
 
-    x_mean = sum(w * x for w, x in zip(weights, xs)) / total_weight
-    y_mean = sum(w * y for w, y in zip(weights, ys)) / total_weight
-    sxx = sum(w * (x - x_mean) ** 2 for w, x in zip(weights, xs))
-    sxy = sum(w * (x - x_mean) * (y - y_mean) for w, x, y in zip(weights, xs, ys))
-    syy = sum(w * (y - y_mean) ** 2 for w, y in zip(weights, ys))
+    x_mean = sum(w * x for w, x in zip(weights, xs, strict=False)) / total_weight
+    y_mean = sum(w * y for w, y in zip(weights, ys, strict=False)) / total_weight
+    sxx = sum(w * (x - x_mean) ** 2 for w, x in zip(weights, xs, strict=False))
+    sxy = sum(w * (x - x_mean) * (y - y_mean) for w, x, y in zip(weights, xs, ys, strict=False))
+    syy = sum(w * (y - y_mean) ** 2 for w, y in zip(weights, ys, strict=False))
 
     slope = 0.0 if sxx <= 0 else sxy / sxx
     intercept = y_mean - slope * x_mean
-    residuals = [y - (intercept + slope * x) for x, y in zip(xs, ys)]
-    weighted_sse = sum(w * r * r for w, r in zip(weights, residuals))
+    residuals = [y - (intercept + slope * x) for x, y in zip(xs, ys, strict=False)]
+    weighted_sse = sum(w * r * r for w, r in zip(weights, residuals, strict=False))
     dof = len(xs) - 2
     residual_sd = math.sqrt(weighted_sse / dof) if dof > 0 else 0.0
     r_squared = 0.0 if syy <= 0 else clamp(1.0 - weighted_sse / syy, 0.0, 1.0)

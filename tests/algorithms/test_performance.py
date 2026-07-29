@@ -166,7 +166,10 @@ class TestProgressionForecast(unittest.TestCase):
 class TestProbabilityOfBeating(unittest.TestCase):
     def test_an_easy_target_is_likely(self) -> None:
         forecast = performance.progression_forecast(
-            [(REF_DAY - timedelta(weeks=8 - week), 1250.0 - 2.0 * week + (3.0 if week % 2 else -3.0)) for week in range(8)],
+            [
+                (REF_DAY - timedelta(weeks=8 - week), 1250.0 - 2.0 * week + (3.0 if week % 2 else -3.0))
+                for week in range(8)
+            ],
             28,
         )
         assert forecast is not None
@@ -177,7 +180,10 @@ class TestProbabilityOfBeating(unittest.TestCase):
 
     def test_probabilities_stay_within_bounds(self) -> None:
         forecast = performance.progression_forecast(
-            [(REF_DAY - timedelta(weeks=8 - week), 1250.0 - 2.0 * week + (3.0 if week % 2 else -3.0)) for week in range(8)],
+            [
+                (REF_DAY - timedelta(weeks=8 - week), 1250.0 - 2.0 * week + (3.0 if week % 2 else -3.0))
+                for week in range(8)
+            ],
             28,
         )
         assert forecast is not None
@@ -188,7 +194,10 @@ class TestProbabilityOfBeating(unittest.TestCase):
 
     def test_direction_flips_for_higher_is_better_metrics(self) -> None:
         forecast = performance.progression_forecast(
-            [(REF_DAY - timedelta(weeks=8 - week), 240.0 + 2.0 * week + (3.0 if week % 2 else -3.0)) for week in range(8)],
+            [
+                (REF_DAY - timedelta(weeks=8 - week), 240.0 + 2.0 * week + (3.0 if week % 2 else -3.0))
+                for week in range(8)
+            ],
             28,
             lower_is_better=False,
             metric="ftp",

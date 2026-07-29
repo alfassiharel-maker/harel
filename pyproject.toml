@@ -8,6 +8,9 @@ requires-python = ">=3.11"
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+# Async fixtures share the test's function-scoped loop. Set explicitly so the
+# suite does not depend on a pytest-asyncio default that is scheduled to change.
+asyncio_default_fixture_loop_scope = "function"
 addopts = "--strict-markers --strict-config -ra"
 markers = [
     "security: tenant isolation, auth, webhook and ledger tests — cannot be skipped",
@@ -42,6 +45,14 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "DTZ001"]   # fixture secrets and fixed dates are intentional
+# `__table_args__` and `__tablename__` are SQLAlchemy's declarative contract: a
+# dict/tuple assigned at class scope is how the framework is configured, not a
+# mutable-shared-state bug, so ClassVar annotations would add noise for no safety.
+"backend/**/models.py" = ["RUF012"]
+# The domain error hierarchy deliberately reads as HTTP-shaped nouns
+# (`NotFound`, `Conflict`, `InvalidCredentials`) rather than `...Error`. The names
+# are the API contract; renaming them for a suffix convention would be churn.
+"backend/core/errors.py" = ["N818"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -81,38 +92,46 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Layers are respected"
 type = "layers"
+# Parenthesised layers are optional: they are enforced once the package exists
+# and ignored until then, so the contract stays green through the phased build
+# (integrations lands in Phase 1 weeks 3–4) without ever going un-enforced for a
+# layer that does exist.
 layers = [
     "backend.api",
     "backend.modules",
-    "backend.integrations",
+    "(backend.integrations)",
     "backend.algorithms",
 ]
 
 [[tool.importlinter.contracts]]
 name = "Modules are independent — cross-module access goes through service only"
 type = "independence"
+# Lists the modules that exist today. The `independence` contract has no optional
+# syntax, so a module that has not been created yet cannot be named here without
+# failing the whole run. RULE FOR REVIEWERS: adding `backend/modules/<name>/` and
+# not adding it to this list is a contract regression — the drift check in
+# tests/architecture guards against exactly that omission.
 modules = [
     "backend.modules.identity",
     "backend.modules.training",
-    "backend.modules.coaching",
-    "backend.modules.billing",
-    "backend.modules.rewards",
-    "backend.modules.partners",
-    "backend.modules.community",
-    "backend.modules.notifications",
 ]
 
 [[tool.importlinter.contracts]]
 name = "The API layer never touches repositories or ORM models directly"
 type = "forbidden"
 source_modules = ["backend.api"]
+# Direct imports only. The API calls a module's `service`, and that service
+# legitimately imports its own `repository` and `models` — forbidding the
+# transitive chain would ban the API from calling any service at all. What must
+# never happen is API code itself writing `import ...repository`, which this
+# still catches.
+allow_indirect_imports = true
+# Only the repositories that exist can be named; a forbidden module that does not
+# exist fails the run. Extended per module as each is built (see the reviewer rule
+# on the independence contract above).
 forbidden_modules = [
     "backend.modules.identity.repository",
+    "backend.modules.identity.models",
     "backend.modules.training.repository",
-    "backend.modules.coaching.repository",
-    "backend.modules.billing.repository",
-    "backend.modules.rewards.repository",
-    "backend.modules.partners.repository",
-    "backend.modules.community.repository",
-    "backend.modules.notifications.repository",
+    "backend.modules.training.models",
 ]

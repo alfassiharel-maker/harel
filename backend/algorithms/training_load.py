@@ -18,23 +18,23 @@ from .stats import ewma, mean, rolling_sum, stdev
 from .types import ActivitySummary, AthleteProfile, LoadPoint, LoadSource, Sex, Sport, TrainingLoadResult
 
 __all__ = [
-    "trimp",
-    "normalized_power",
-    "intensity_factor",
-    "power_tss",
-    "hr_tss",
-    "pace_tss",
-    "swim_tss",
-    "session_rpe_load",
-    "training_load",
-    "daily_load_series",
-    "fitness_fatigue",
+    "ATL_TIME_CONSTANT_DAYS",
+    "CTL_TIME_CONSTANT_DAYS",
     "AcwrResult",
     "acwr",
+    "daily_load_series",
+    "fitness_fatigue",
+    "hr_tss",
+    "intensity_factor",
     "monotony_strain",
+    "normalized_power",
+    "pace_tss",
+    "power_tss",
+    "session_rpe_load",
+    "swim_tss",
+    "training_load",
+    "trimp",
     "weekly_ramp_pct",
-    "CTL_TIME_CONSTANT_DAYS",
-    "ATL_TIME_CONSTANT_DAYS",
 ]
 
 CTL_TIME_CONSTANT_DAYS = 42.0
@@ -115,7 +115,9 @@ def normalized_power(power_samples: Sequence[float], sample_interval_s: float = 
         running += power_samples[index] - power_samples[index - window]
         rolled.append(running / window)
     fourth = mean([value**4 for value in rolled])
-    return fourth**0.25
+    # float() coerces the statistics.mean/`**` result, which the type checker
+    # widens to Any, back to the declared float. No numerical effect.
+    return float(fourth**0.25)
 
 
 def intensity_factor(normalized: float, threshold: float) -> float:
@@ -317,7 +319,7 @@ def fitness_fatigue(
     atl = ewma(values, ATL_TIME_CONSTANT_DAYS, seed=seed_atl)
     return [
         LoadPoint(day=day, load=load, ctl=round(c, 2), atl=round(a, 2))
-        for day, load, c, a in zip(days, values, ctl, atl)
+        for day, load, c, a in zip(days, values, ctl, atl, strict=False)
     ]
 
 
@@ -396,7 +398,9 @@ def acwr(
     )
 
 
-def monotony_strain(loads: Mapping[date, float], ref_day: date, window_days: int = 7) -> tuple[float | None, float | None]:
+def monotony_strain(
+    loads: Mapping[date, float], ref_day: date, window_days: int = 7
+) -> tuple[float | None, float | None]:
     """Foster training monotony (mean/SD of daily load) and strain
     (weekly load x monotony).
 

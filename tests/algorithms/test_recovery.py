@@ -19,19 +19,19 @@ def _baseline_hrv_mean(history: list[DailyWellness]) -> float:
 
 
 def _today(**overrides) -> DailyWellness:
-    defaults = dict(
-        day=REF_DAY,
-        hrv_rmssd_ms=60.0,
-        resting_hr=50.0,
-        sleep_total_min=480.0,
-        sleep_deep_min=105.0,
-        sleep_rem_min=115.0,
-        sleep_efficiency_pct=92.0,
-        soreness=2,
-        mood=2,
-        stress=2,
-        fatigue=2,
-    )
+    defaults = {
+        "day": REF_DAY,
+        "hrv_rmssd_ms": 60.0,
+        "resting_hr": 50.0,
+        "sleep_total_min": 480.0,
+        "sleep_deep_min": 105.0,
+        "sleep_rem_min": 115.0,
+        "sleep_efficiency_pct": 92.0,
+        "soreness": 2,
+        "mood": 2,
+        "stress": 2,
+        "fatigue": 2,
+    }
     defaults.update(overrides)
     return DailyWellness(**defaults)
 
@@ -46,8 +46,9 @@ class TestReadinessComposite(unittest.TestCase):
 
     def test_a_bad_day_scores_far_below_a_good_one(self) -> None:
         history = steady_wellness(40)
-        good = list(history) + [_today(hrv_rmssd_ms=_baseline_hrv_mean(history))]
-        bad = list(history) + [
+        good = [*list(history), _today(hrv_rmssd_ms=_baseline_hrv_mean(history))]
+        bad = [
+            *list(history),
             _today(
                 hrv_rmssd_ms=38.0,
                 resting_hr=60.0,
@@ -59,7 +60,7 @@ class TestReadinessComposite(unittest.TestCase):
                 mood=4,
                 stress=5,
                 fatigue=5,
-            )
+            ),
         ]
         good_result = recovery.readiness(profile(), good, constant_loads(), REF_DAY)
         bad_result = recovery.readiness(profile(), bad, constant_loads(), REF_DAY)
@@ -110,9 +111,7 @@ class TestMissingData(unittest.TestCase):
 
     def test_weights_renormalise_over_available_components(self) -> None:
         history = steady_wellness(40)
-        history.append(
-            DailyWellness(day=REF_DAY, hrv_rmssd_ms=_baseline_hrv_mean(history))
-        )
+        history.append(DailyWellness(day=REF_DAY, hrv_rmssd_ms=_baseline_hrv_mean(history)))
         result = recovery.readiness(profile(), history, {}, REF_DAY)
         # HRV only: 0.30 of the model is present.
         self.assertAlmostEqual(result.data_quality, 0.30)
@@ -120,15 +119,16 @@ class TestMissingData(unittest.TestCase):
 
     def test_a_missing_input_is_not_treated_as_a_bad_input(self) -> None:
         history = steady_wellness(40)
-        full = list(history) + [_today(hrv_rmssd_ms=_baseline_hrv_mean(history))]
-        without_sleep = list(history) + [
+        full = [*list(history), _today(hrv_rmssd_ms=_baseline_hrv_mean(history))]
+        without_sleep = [
+            *list(history),
             _today(
                 hrv_rmssd_ms=_baseline_hrv_mean(history),
                 sleep_total_min=None,
                 sleep_deep_min=None,
                 sleep_rem_min=None,
                 sleep_efficiency_pct=None,
-            )
+            ),
         ]
         full_result = recovery.readiness(profile(), full, constant_loads(), REF_DAY)
         partial_result = recovery.readiness(profile(), without_sleep, constant_loads(), REF_DAY)

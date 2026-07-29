@@ -96,7 +96,9 @@ class TestAttribution(unittest.TestCase):
         self.assertAlmostEqual(rebuilt, result.probability, places=3)
 
     def test_drivers_are_ordered_by_magnitude(self) -> None:
-        result = injury_risk.assess(profile(injuries_last_12m=1), spiking_loads(), steady_wellness(60), REF_DAY)
+        result = injury_risk.assess(
+            profile(injuries_last_12m=1), spiking_loads(), steady_wellness(60), REF_DAY
+        )
         magnitudes = [abs(driver.contribution) for driver in result.drivers]
         self.assertEqual(magnitudes, sorted(magnitudes, reverse=True))
 
@@ -117,7 +119,11 @@ class TestHonesty(unittest.TestCase):
     def test_probability_is_always_a_valid_probability(self) -> None:
         scenarios = [
             (profile(), {}, []),
-            (profile(injuries_last_12m=3, training_age_years=0.0, age=55), spiking_loads(), steady_wellness(60, sleep_min=300.0)),
+            (
+                profile(injuries_last_12m=3, training_age_years=0.0, age=55),
+                spiking_loads(),
+                steady_wellness(60, sleep_min=300.0),
+            ),
             (profile(), constant_loads(daily=500.0, days=90), steady_wellness(60)),
         ]
         for athlete, loads, wellness in scenarios:

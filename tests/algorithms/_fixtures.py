@@ -24,20 +24,20 @@ REF_DAY = date(2026, 6, 15)
 
 def profile(**overrides) -> AthleteProfile:
     """A fully-instrumented intermediate triathlete."""
-    defaults = dict(
-        sex=Sex.MALE,
-        age=35,
-        weight_kg=72.0,
-        height_cm=178.0,
-        hr_max=190,
-        hr_rest=50,
-        lthr=170,
-        ftp_watts=250.0,
-        threshold_pace_s_per_km=240.0,
-        css_s_per_100m=95.0,
-        training_age_years=6.0,
-        injuries_last_12m=0,
-    )
+    defaults = {
+        "sex": Sex.MALE,
+        "age": 35,
+        "weight_kg": 72.0,
+        "height_cm": 178.0,
+        "hr_max": 190,
+        "hr_rest": 50,
+        "lthr": 170,
+        "ftp_watts": 250.0,
+        "threshold_pace_s_per_km": 240.0,
+        "css_s_per_100m": 95.0,
+        "training_age_years": 6.0,
+        "injuries_last_12m": 0,
+    }
     defaults.update(overrides)
     return AthleteProfile(**defaults)
 
@@ -93,44 +93,44 @@ def spiking_loads(end: date = REF_DAY) -> dict[date, float]:
 
 
 def run_activity(**overrides) -> ActivitySummary:
-    defaults = dict(
-        sport=Sport.RUN,
-        start_date=REF_DAY,
-        duration_s=3600,
-        moving_time_s=3600,
-        distance_m=14000.0,
-        avg_hr=155.0,
-    )
+    defaults = {
+        "sport": Sport.RUN,
+        "start_date": REF_DAY,
+        "duration_s": 3600,
+        "moving_time_s": 3600,
+        "distance_m": 14000.0,
+        "avg_hr": 155.0,
+    }
     defaults.update(overrides)
     return ActivitySummary(**defaults)
 
 
 def bike_activity(**overrides) -> ActivitySummary:
-    defaults = dict(
-        sport=Sport.BIKE,
-        start_date=REF_DAY,
-        duration_s=3600,
-        moving_time_s=3600,
-        distance_m=32000.0,
-        avg_power=220.0,
-        normalized_power=235.0,
-        avg_hr=145.0,
-    )
+    defaults = {
+        "sport": Sport.BIKE,
+        "start_date": REF_DAY,
+        "duration_s": 3600,
+        "moving_time_s": 3600,
+        "distance_m": 32000.0,
+        "avg_power": 220.0,
+        "normalized_power": 235.0,
+        "avg_hr": 145.0,
+    }
     defaults.update(overrides)
     return ActivitySummary(**defaults)
 
 
 def swim_activity(**overrides) -> ActivitySummary:
-    defaults = dict(
-        sport=Sport.SWIM,
-        start_date=REF_DAY,
-        duration_s=1800,
-        moving_time_s=1800,
-        distance_m=1800.0,
-        total_strokes=1200,
-        pool_length_m=25.0,
-        avg_hr=140.0,
-    )
+    defaults = {
+        "sport": Sport.SWIM,
+        "start_date": REF_DAY,
+        "duration_s": 1800,
+        "moving_time_s": 1800,
+        "distance_m": 1800.0,
+        "total_strokes": 1200,
+        "pool_length_m": 25.0,
+        "avg_hr": 140.0,
+    }
     defaults.update(overrides)
     return ActivitySummary(**defaults)
 

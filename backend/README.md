@@ -5,23 +5,25 @@ Python 3.11 + FastAPI. Structure and rationale in `docs/01-architecture.md` §3.
 ```
 backend/
 ├── algorithms/         ✅ BUILT — analytics engine, stdlib only, 209 tests
-├── core/               ⏳ config, security primitives, errors, logging, tenancy context
-├── modules/            ⏳ the eight service modules
-│   ├── identity/           auth, users, roles, consent, grants, audit
-│   ├── training/           profile, provider links, activities, wellness, metrics
-│   ├── coaching/           digital twin, AI chat, plans
-│   ├── billing/            subscriptions, receipts, entitlements
-│   ├── rewards/            wallet ledger, reward policies, payouts
-│   ├── partners/           partner accounts, offers, conversions
-│   ├── community/          groups, challenges, sharing
-│   └── notifications/      push, email, preferences
+├── core/               ✅ BUILT — config, security primitives, errors, logging, tenancy context
+├── modules/
+│   ├── identity/           ✅ BUILT — auth, users, consent, sessions, audit
+│   ├── training/           🟡 PARTIAL — profile, goals, personal bests, zones (ingest in wk 3–4)
+│   ├── coaching/           ⏳ digital twin, AI chat, plans
+│   ├── billing/            ⏳ subscriptions, receipts, entitlements
+│   ├── rewards/            ⏳ wallet ledger, reward policies, payouts
+│   ├── partners/           ⏳ partner accounts, offers, conversions
+│   ├── community/          ⏳ groups, challenges, sharing
+│   └── notifications/      ⏳ push, email, preferences
 ├── integrations/       ⏳ provider adapters: garmin, apple_health, coros, polar
-├── api/                ⏳ FastAPI routers, dependencies, request/response schemas
+├── api/                🟡 PARTIAL — app, deps, error handlers, health/auth/me/training routers
 ├── workers/            ⏳ queue consumers and scheduled jobs
-└── database/           ⏳ engine, session, base model, RLS session helpers
+└── database/           ✅ BUILT — engine, RLS-scoped session, base model helpers
 ```
 
-Everything marked ⏳ is blocked on architecture approval.
+`⏳` is not yet started; `🟡` is the Phase-1 slice only. The layering contract in
+`pyproject.toml` already declares the not-yet-built modules (as optional layers),
+so each lands under the boundary rules automatically.
 
 ## Module template
 

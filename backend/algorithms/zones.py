@@ -15,14 +15,14 @@ from dataclasses import dataclass
 from .types import AthleteProfile, Sport
 
 __all__ = [
+    "IntensityDistribution",
     "Zone",
     "hr_zones",
-    "power_zones",
+    "intensity_distribution",
     "pace_zones",
+    "power_zones",
     "zone_for_value",
     "zone_seconds",
-    "IntensityDistribution",
-    "intensity_distribution",
 ]
 
 

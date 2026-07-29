@@ -55,7 +55,7 @@ class TestStandardScores(unittest.TestCase):
 
     def test_robust_z_score_ignores_a_single_outlier(self) -> None:
         clean = [50.0, 51.0, 49.0, 50.0, 51.0, 49.0, 50.0]
-        polluted = clean + [200.0]
+        polluted = [*clean, 200.0]
         plain = stats.z_score(45.0, polluted)
         robust = stats.robust_z_score(45.0, polluted)
         assert plain is not None and robust is not None

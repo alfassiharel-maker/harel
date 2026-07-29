@@ -23,19 +23,19 @@ from .stats import LinearFit, linear_regression, probability_below
 from .types import PredictionResult
 
 __all__ = [
-    "riegel_predict",
-    "fit_riegel_exponent",
-    "vdot_from_race",
-    "predict_time_from_vdot",
-    "equivalent_times",
-    "critical_speed",
-    "critical_power",
-    "ftp_from_20min_test",
-    "progression_forecast",
-    "probability_of_beating",
-    "triathlon_prediction",
     "DEFAULT_RIEGEL_EXPONENT",
     "STANDARD_DISTANCES_M",
+    "critical_power",
+    "critical_speed",
+    "equivalent_times",
+    "fit_riegel_exponent",
+    "ftp_from_20min_test",
+    "predict_time_from_vdot",
+    "probability_of_beating",
+    "progression_forecast",
+    "riegel_predict",
+    "triathlon_prediction",
+    "vdot_from_race",
 ]
 
 DEFAULT_RIEGEL_EXPONENT = 1.06
@@ -58,7 +58,9 @@ def riegel_predict(
     """Riegel: T2 = T1 x (D2 / D1) ^ exponent."""
     if known_time_s <= 0 or known_distance_m <= 0 or target_distance_m <= 0:
         raise ValueError("times and distances must be positive")
-    return known_time_s * (target_distance_m / known_distance_m) ** exponent
+    # float() coerces the `** exponent` result, which the type checker widens to
+    # Any, back to the declared float. No numerical effect.
+    return float(known_time_s * (target_distance_m / known_distance_m) ** exponent)
 
 
 def fit_riegel_exponent(personal_bests: Sequence[tuple[float, float]]) -> tuple[float, float]:
@@ -89,9 +91,7 @@ def _velocity_to_vo2(v_m_per_min: float) -> float:
 def _fraction_of_vo2max(duration_min: float) -> float:
     """Fraction of VO2max sustainable for a given race duration."""
     return (
-        0.8
-        + 0.1894393 * math.exp(-0.012778 * duration_min)
-        + 0.2989558 * math.exp(-0.1932605 * duration_min)
+        0.8 + 0.1894393 * math.exp(-0.012778 * duration_min) + 0.2989558 * math.exp(-0.1932605 * duration_min)
     )
 
 
@@ -250,7 +250,9 @@ def progression_forecast(
     )
 
 
-def probability_of_beating(target_value: float, forecast: PredictionResult, *, lower_is_better: bool = True) -> float:
+def probability_of_beating(
+    target_value: float, forecast: PredictionResult, *, lower_is_better: bool = True
+) -> float:
     """Probability the athlete beats `target_value` at the forecast horizon.
 
     Derived from the forecast's own interval, so it degrades gracefully: a wide

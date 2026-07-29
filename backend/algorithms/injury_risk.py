@@ -31,7 +31,7 @@ from .types import (
     RiskResult,
 )
 
-__all__ = ["extract_features", "predict", "assess", "MODEL_VERSION", "COEFFICIENTS", "INTERCEPT"]
+__all__ = ["COEFFICIENTS", "INTERCEPT", "MODEL_VERSION", "assess", "extract_features", "predict"]
 
 MODEL_VERSION = "heuristic-v0"
 
@@ -109,7 +109,9 @@ def extract_features(
 
     features["sleep_debt_h"] = clamp(_sleep_debt_per_night(wellness_history, ref_day), 0.0, _FEATURE_CAP)
     features["hrv_suppression"] = clamp(_hrv_suppression(wellness_history, ref_day), 0.0, _FEATURE_CAP)
-    features["resting_hr_elevation"] = clamp(_resting_hr_elevation(wellness_history, ref_day), 0.0, _FEATURE_CAP)
+    features["resting_hr_elevation"] = clamp(
+        _resting_hr_elevation(wellness_history, ref_day), 0.0, _FEATURE_CAP
+    )
 
     features["prior_injury"] = 1.0 if profile.injuries_last_12m >= 1 else 0.0
     if profile.training_age_years is not None:

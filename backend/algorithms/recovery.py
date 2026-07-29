@@ -30,7 +30,7 @@ from .types import (
     ReadinessResult,
 )
 
-__all__ = ["readiness", "COMPONENT_WEIGHTS", "BASELINE_WINDOW_DAYS"]
+__all__ = ["BASELINE_WINDOW_DAYS", "COMPONENT_WEIGHTS", "readiness"]
 
 BASELINE_WINDOW_DAYS = 28
 MIN_BASELINE_POINTS = 7
@@ -59,7 +59,9 @@ def _score_from_z(z: float, *, higher_is_better: bool) -> float:
     return 50.0 + 50.0 * clamp(signed / 2.0, -1.0, 1.0)
 
 
-def _window(history: Sequence[DailyWellness], ref_day: date) -> tuple[DailyWellness | None, list[DailyWellness]]:
+def _window(
+    history: Sequence[DailyWellness], ref_day: date
+) -> tuple[DailyWellness | None, list[DailyWellness]]:
     """Split history into (today's reading, baseline window before today)."""
     today: DailyWellness | None = None
     baseline: list[DailyWellness] = []
@@ -73,9 +75,14 @@ def _window(history: Sequence[DailyWellness], ref_day: date) -> tuple[DailyWelln
     return today, baseline
 
 
-def _hrv_component(today: DailyWellness, baseline: Sequence[DailyWellness]) -> tuple[float, float, float] | None:
+def _hrv_component(
+    today: DailyWellness, baseline: Sequence[DailyWellness]
+) -> tuple[float, float, float] | None:
     """Returns (score, today_rmssd, baseline_mean_rmssd)."""
-    if today.ln_hrv is None:
+    if today.ln_hrv is None or today.hrv_rmssd_ms is None:
+        # ln_hrv is derived from hrv_rmssd_ms, so the second clause is always
+        # implied by the first — stated explicitly so the type checker (and a
+        # reader) can see hrv_rmssd_ms is non-None for the rest of the function.
         return None
     raw = [e.hrv_rmssd_ms for e in baseline if e.hrv_rmssd_ms]
     logs = [e.ln_hrv for e in baseline if e.ln_hrv is not None]
@@ -95,7 +102,9 @@ def _hrv_component(today: DailyWellness, baseline: Sequence[DailyWellness]) -> t
     return _score_from_z(z, higher_is_better=True), today.hrv_rmssd_ms, baseline_mean_raw
 
 
-def _resting_hr_component(today: DailyWellness, baseline: Sequence[DailyWellness]) -> tuple[float, float, float] | None:
+def _resting_hr_component(
+    today: DailyWellness, baseline: Sequence[DailyWellness]
+) -> tuple[float, float, float] | None:
     if today.resting_hr is None:
         return None
     values = [e.resting_hr for e in baseline if e.resting_hr]
@@ -227,18 +236,21 @@ def readiness(
     available_weight = sum(COMPONENT_WEIGHTS[name] for name in components)
     drivers: list[Driver] = []
     total = 0.0
-    for name, (score, value, base) in components.items():
+    # Distinct names from the `score, value, base` unpacks above: those are all
+    # floats, whereas a component's value/baseline here are float | None, and
+    # reusing the names would ask the type checker to give one variable two types.
+    for name, (comp_score, comp_value, comp_base) in components.items():
         normalised_weight = COMPONENT_WEIGHTS[name] / available_weight
-        total += normalised_weight * score
+        total += normalised_weight * comp_score
         drivers.append(
             Driver(
                 name=name,
-                score=round(score, 1),
+                score=round(comp_score, 1),
                 weight=round(normalised_weight, 3),
                 # Signed points relative to neutral; these sum exactly to score - 50.
-                contribution=round(normalised_weight * (score - 50.0), 2),
-                value=value,
-                baseline=base,
+                contribution=round(normalised_weight * (comp_score - 50.0), 2),
+                value=comp_value,
+                baseline=comp_base,
             )
         )
 
