@@ -53,6 +53,13 @@ ignore = [
 # (`NotFound`, `Conflict`, `InvalidCredentials`) rather than `...Error`. The names
 # are the API contract; renaming them for a suffix convention would be churn.
 "backend/core/errors.py" = ["N818"]
+# Same convention, extended to the layers that raise into that hierarchy:
+# `ProviderUnavailable` / `ProviderTokenExpired` / `ProviderRateLimited` name the
+# condition a caller must handle, and `DecryptionFailed` names an outcome. Adding an
+# `Error` suffix to some but not all of the hierarchy would be worse than either
+# convention applied consistently.
+"backend/integrations/base.py" = ["N818"]
+"backend/core/crypto.py" = ["N818"]
 
 [tool.mypy]
 python_version = "3.11"
