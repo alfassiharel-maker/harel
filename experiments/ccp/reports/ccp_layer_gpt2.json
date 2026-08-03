@@ -1,0 +1,186 @@
+{
+  "model": "/home/user/harel/experiments/ccp/data/gpt2-fp32.safetensors",
+  "file_bytes": 548105171,
+  "tensors": [
+    {
+      "name": "wte.weight",
+      "dtype": "F32",
+      "shape": [
+        50257,
+        768
+      ],
+      "nbytes": 154389504,
+      "ccp_bytes": 154390297,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 147,
+      "gzip_bytes": 143419606,
+      "ccp_deinterleaved_bytes": 154390297,
+      "gzip_deinterleaved_bytes": 131503310,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.8.mlp.c_proj.weight",
+      "dtype": "F32",
+      "shape": [
+        3072,
+        768
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8776913,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8053221,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.6.mlp.c_fc.weight",
+      "dtype": "F32",
+      "shape": [
+        768,
+        3072
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8770036,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8045900,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.11.mlp.c_fc.weight",
+      "dtype": "F32",
+      "shape": [
+        768,
+        3072
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8767778,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8044829,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.10.mlp.c_proj.weight",
+      "dtype": "F32",
+      "shape": [
+        3072,
+        768
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8759053,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8037506,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.6.mlp.c_proj.weight",
+      "dtype": "F32",
+      "shape": [
+        3072,
+        768
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8773092,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8062157,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.10.mlp.c_fc.weight",
+      "dtype": "F32",
+      "shape": [
+        768,
+        3072
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8767505,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8043235,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.0.mlp.c_fc.weight",
+      "dtype": "F32",
+      "shape": [
+        768,
+        3072
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8780091,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8064442,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.1.mlp.c_proj.weight",
+      "dtype": "F32",
+      "shape": [
+        3072,
+        768
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8776266,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8076544,
+      "verified": true,
+      "deinterleave_verified": true
+    },
+    {
+      "name": "h.9.mlp.c_proj.weight",
+      "dtype": "F32",
+      "shape": [
+        3072,
+        768
+      ],
+      "nbytes": 9437184,
+      "ccp_bytes": 9437287,
+      "ccp_region_size": 1048576,
+      "ccp_regions_ccp": 0,
+      "ccp_regions_total": 9,
+      "gzip_bytes": 8769030,
+      "ccp_deinterleaved_bytes": 9437287,
+      "gzip_deinterleaved_bytes": 8045944,
+      "verified": true,
+      "deinterleave_verified": true
+    }
+  ]
+}

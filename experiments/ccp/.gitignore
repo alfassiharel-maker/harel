@@ -1,0 +1,10 @@
+# Downloaded model weights and other experiment inputs. These are large and
+# fetched on demand; the reports record which file was measured by SHA-256.
+data/
+
+# Scratch space used while encoding and decoding.
+reports/_work/
+
+# Default report destinations when the scripts are run without --output.
+ccp_full_report.txt
+ccp_layer_report.txt

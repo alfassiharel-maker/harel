@@ -20,6 +20,10 @@ test-algorithms: ## Run the analytics suite with the system Python, zero deps
 check-no-deps: ## Assert the engine imports with no third-party packages present
 	@$(PY) -c "import backend.algorithms as a; print('analytics engine imports clean, version', a.__version__)"
 
+.PHONY: test-ccp
+test-ccp: ## Run the CCP storage experiment suite, zero deps (experiments/ccp)
+	cd experiments/ccp && $(PY) -m unittest discover -s tests -t . -v
+
 # -----------------------------------------------------------------------------
 # Full environment (after architecture approval)
 # -----------------------------------------------------------------------------
@@ -67,7 +71,7 @@ audit: ## Dependency vulnerability audit
 	$(VENV_PY) -m pip_audit -r requirements.txt
 
 .PHONY: ci
-ci: lint types lint-arch test-algorithms test test-security audit ## Everything CI runs
+ci: lint types lint-arch test-algorithms test-ccp test test-security audit ## Everything CI runs
 
 # -----------------------------------------------------------------------------
 # Local services
