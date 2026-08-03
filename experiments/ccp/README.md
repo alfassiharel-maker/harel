@@ -18,11 +18,39 @@ not a formula.
 | `ccp_datasets.py` | Deterministic synthetic datasets, including the controls CCP must lose on. |
 | `ccp_benchmark.py` | Runs the engine over many datasets and puts it beside gzip, bzip2 and LZMA. Measures peak RSS from the kernel. |
 | `ccp_layer_analysis.py` | Per-tensor analysis of a `.safetensors` model, plus a reversible byte-plane reordering as a control transform. |
+| `ccp_checkpoint_experiment.py` | Two versions of one model stored together — the case a delta scheme is actually for. |
 | `tests/test_ccp.py` | Anchor cases, undefined cases, hand-computed cost values, round-trip and determinism checks. |
-| `FINDINGS.md` | What the experiment actually measured and what it means. |
+| `FINDINGS.md` | What the experiment actually measured and what it means. **Read this first.** |
 
 Only the standard library is needed. `ccp_datasets.py` and the engine have no
 third-party imports at all.
+
+## Reproducing the committed reports
+
+`data/` is gitignored, so the four model files have to be fetched first. Each
+report records the SHA-256 of what it measured, so a re-run can be checked
+against the committed one.
+
+```bash
+mkdir -p data && cd data
+curl -sSLO https://huggingface.co/prajjwal1/bert-tiny/resolve/main/pytorch_model.bin
+curl -sSL -o gpt2-fp32.safetensors \
+  https://huggingface.co/openai-community/gpt2/resolve/main/model.safetensors
+curl -sSL -o distilbert-fp32.safetensors \
+  https://huggingface.co/distilbert-base-uncased/resolve/main/model.safetensors
+curl -sSL -o qwen2.5-0.5b-q8_0.gguf \
+  https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf
+cd ..
+
+python3 ccp_benchmark.py --size 64MB --real-dir data --out-dir reports
+python3 ccp_layer_analysis.py data/gpt2-fp32.safetensors \
+  --output reports/ccp_layer_gpt2.txt --min-size 2MB --limit 10
+python3 ccp_checkpoint_experiment.py data/gpt2-fp32.safetensors \
+  --slice 16MB --offset 1MB --output reports/ccp_checkpoint_gpt2.txt
+```
+
+The benchmark run takes about 22 minutes on 8 cores; most of it is the LZMA and
+bzip2 baselines, which `--skip-slow-codecs` drops.
 
 ## Running it
 

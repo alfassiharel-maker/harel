@@ -231,7 +231,32 @@ would have to sweep per file. `sparse_weights` is not even unimodal.
 
 ---
 
-## 6. Answers to the questions that were asked
+## 6. Scale: the saving does not grow with size
+
+`reports/ccp_scale_1.4gb.txt` — the four real model files concatenated into one
+1.41 GB input, to test whether the saving holds, grows or vanishes with volume.
+
+| Region size | Regions | Stored as deltas | CCP size | Saving | Verify |
+| --- | --- | --- | --- | --- | --- |
+| 4 KB | 368,537 | 8,391 | 1.38 GB | **2.14%** | PASS |
+| 64 KB | 23,034 | 234 | 1.39 GB | 0.91% | PASS |
+| 1 MB | 1,440 | 0 | 1.41 GB | −0.00% | PASS |
+
+Encode 33.92s (42 MB/s), decode 19.39s (75 MB/s), reconstruction verified, and
+the analytic cost model agreed with the measured container.
+
+The result is lower than GPT-2 alone (5.99%), and that is the finding. 8,391
+delta regions at 4KB is 34 MB — essentially the same GPT-2 mask duplication
+identified in section 1. The other three models contributed nothing but
+denominator. Concatenating unrelated models does not create shared structure, so:
+
+**the saving tracks the absolute quantity of duplicated content, not the size of
+the corpus.** Adding unrelated data dilutes the percentage rather than improving
+it. This rules out the "it gets better at scale" hypothesis directly. Volume only
+helps if what is added is *related* to what is already there, which is precisely
+the checkpoint-collection case in section 2 and nothing else.
+
+## 7. Answers to the questions that were asked
 
 **Does CCP save real storage?** On a single model checkpoint, no — under 0.1% on
 three of four real files, and the fourth is explained by constant mask buffers,
@@ -256,7 +281,7 @@ claim does not survive the LZMA-512MB column. On speed at equivalent ratio, yes:
 
 ---
 
-## 7. What would have to be true for this to matter commercially
+## 8. What would have to be true for this to matter commercially
 
 The measured results support exactly one deployment shape: **a store holding many
 near-identical checkpoints**, where the same base is shared across model
