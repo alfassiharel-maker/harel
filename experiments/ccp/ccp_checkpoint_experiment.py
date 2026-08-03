@@ -135,12 +135,41 @@ VARIANTS: list[Variant] = [
 # ---------------------------------------------------------------------------
 
 
+def _compress_to_file(path: str, out_path: str, compressor: object) -> tuple[int, float]:
+    """Compress `path` into `out_path`. Returns (bytes written, seconds)."""
+    started = time.monotonic()
+    total = 0
+    with open(path, "rb") as f, open(out_path, "wb") as out:
+        while chunk := f.read(4 * 1024 * 1024):
+            block = compressor.compress(chunk)  # type: ignore[attr-defined]
+            out.write(block)
+            total += len(block)
+        tail = compressor.flush()  # type: ignore[attr-defined]
+        out.write(tail)
+        total += len(tail)
+    return total, time.monotonic() - started
+
+
 def _stream_size(path: str, compressor: object) -> int:
     total = 0
     with open(path, "rb") as f:
         while chunk := f.read(4 * 1024 * 1024):
             total += len(compressor.compress(chunk))  # type: ignore[attr-defined]
     return total + len(compressor.flush())  # type: ignore[attr-defined]
+
+
+def _decompress_seconds(path: str, decompressor: object) -> float:
+    """Time a full decompression of `path`, discarding the output.
+
+    Decode speed is the number that decides whether a representation can sit in
+    a model-loading path at all, so it is measured rather than assumed to
+    mirror compression speed.
+    """
+    started = time.monotonic()
+    with open(path, "rb") as f:
+        while chunk := f.read(4 * 1024 * 1024):
+            decompressor.decompress(chunk)  # type: ignore[attr-defined]
+    return time.monotonic() - started
 
 
 def gzip_size(path: str) -> int:
@@ -151,21 +180,31 @@ def gzip_size(path: str) -> int:
 # that decides whether a compressor can see the second copy of a checkpoint at
 # all. gzip's window is 32KB regardless of level; LZMA's dictionary is a tunable
 # and is what makes it a fair opponent here rather than a straw man.
-BASELINES: list[tuple[str, str, Callable[[], object]]] = [
-    (
+@dataclass
+class Baseline:
+    name: str
+    window: str
+    compressor: Callable[[], object]
+    decompressor: Callable[[], object]
+
+
+BASELINES: list[Baseline] = [
+    Baseline(
         "gzip-6",
         "32KB window",
         lambda: zlib.compressobj(6, zlib.DEFLATED, 31),
+        lambda: zlib.decompressobj(31),
     ),
-    (
+    Baseline(
         "lzma-6",
         "8MB dictionary",
         lambda: lzma.LZMACompressor(
             format=lzma.FORMAT_XZ,
             filters=[{"id": lzma.FILTER_LZMA2, "preset": 6}],
         ),
+        lambda: lzma.LZMADecompressor(format=lzma.FORMAT_XZ),
     ),
-    (
+    Baseline(
         "lzma-long",
         "512MB dictionary",
         lambda: lzma.LZMACompressor(
@@ -178,6 +217,19 @@ BASELINES: list[tuple[str, str, Callable[[], object]]] = [
                 }
             ],
         ),
+        lambda: lzma.LZMADecompressor(format=lzma.FORMAT_XZ),
+    ),
+]
+
+# CCP leaves its residual — one copy of the weights plus the deltas — in a plain
+# container, so a general-purpose compressor can still run over it. This is the
+# configuration a real system would deploy, rather than either method alone.
+COMBINATIONS: list[Baseline] = [
+    Baseline(
+        "ccp+gzip",
+        "CCP container then gzip-6",
+        lambda: zlib.compressobj(6, zlib.DEFLATED, 31),
+        lambda: zlib.decompressobj(31),
     ),
 ]
 
@@ -197,7 +249,8 @@ class PairResult:
     encode_seconds: float
     decode_seconds: float
     baselines: dict[str, int] = field(default_factory=dict)
-    baseline_seconds: dict[str, float] = field(default_factory=dict)
+    baseline_encode_seconds: dict[str, float] = field(default_factory=dict)
+    baseline_decode_seconds: dict[str, float] = field(default_factory=dict)
 
     def baseline_saving(self, name: str) -> float | None:
         value = self.baselines.get(name)
@@ -222,22 +275,57 @@ def run_pair(
         f.write(mutated)
     pair_bytes = os.path.getsize(pair_path)
 
+    container_dir = os.path.join(workdir, f"containers_{variant.name}")
     experiment = run_experiment(
         pair_path,
         f"{variant.name} pair",
         region_sizes,
         workdir,
         verbose=False,
+        keep_container_dir=container_dir,
     )
     best = experiment.best
 
     baselines: dict[str, int] = {}
-    baseline_seconds: dict[str, float] = {}
-    for name, _window, factory in BASELINES:
-        started = time.monotonic()
-        baselines[name] = _stream_size(pair_path, factory())
-        baseline_seconds[name] = time.monotonic() - started
+    encode_seconds: dict[str, float] = {}
+    decode_seconds: dict[str, float] = {}
+    scratch = os.path.join(workdir, "compressed.tmp")
+
+    for baseline in BASELINES:
+        size, seconds = _compress_to_file(pair_path, scratch, baseline.compressor())
+        baselines[baseline.name] = size
+        encode_seconds[baseline.name] = seconds
+        decode_seconds[baseline.name] = _decompress_seconds(
+            scratch, baseline.decompressor()
+        )
+        os.unlink(scratch)
+
+    if best is not None:
+        container = os.path.join(
+            container_dir,
+            f"{os.path.basename(pair_path)}.r{best.region_size}.ccp",
+        )
+        for combination in COMBINATIONS:
+            if not os.path.isfile(container):
+                break
+            size, seconds = _compress_to_file(
+                container, scratch, combination.compressor()
+            )
+            baselines[combination.name] = size
+            # The container had to be produced first, so the honest cost of the
+            # combination is the encode time of both stages.
+            encode_seconds[combination.name] = seconds + best.encode_seconds
+            decode_seconds[combination.name] = (
+                _decompress_seconds(scratch, combination.decompressor())
+                + best.decode_seconds
+            )
+            os.unlink(scratch)
+
     os.unlink(pair_path)
+    if os.path.isdir(container_dir):
+        for entry in os.listdir(container_dir):
+            os.unlink(os.path.join(container_dir, entry))
+        os.rmdir(container_dir)
 
     if best is None:
         raise RuntimeError(f"variant {variant.name}: no verified round-trip")
@@ -256,7 +344,8 @@ def run_pair(
         encode_seconds=best.encode_seconds,
         decode_seconds=best.decode_seconds,
         baselines=baselines,
-        baseline_seconds=baseline_seconds,
+        baseline_encode_seconds=encode_seconds,
+        baseline_decode_seconds=decode_seconds,
     )
 
 
@@ -308,32 +397,53 @@ def render(
     lines.append("A compressor can only exploit the second copy if its match window")
     lines.append("reaches back that far. The window is stated for each baseline.")
     lines.append("")
+    columns = BASELINES + COMBINATIONS
+    for baseline in columns:
+        lines.append(f"  {baseline.name:<12} {baseline.window}")
+    lines.append("")
     head = f"{'Variant':<18} {'CCP':>9}"
-    for name, window, _factory in BASELINES:
-        head += f" {name + ' (' + window + ')':>26}"
+    for baseline in columns:
+        head += f" {baseline.name:>12}"
     lines.append(head)
     lines.append("-" * len(head))
     for r in results:
         row = f"{r.variant:<18} {r.ccp_saving_percent:>8.2f}%"
-        for name, _window, _factory in BASELINES:
-            saving = r.baseline_saving(name)
-            row += f" {'-':>26}" if saving is None else f" {saving:>25.2f}%"
+        for baseline in columns:
+            saving = r.baseline_saving(baseline.name)
+            row += f" {'-':>12}" if saving is None else f" {saving:>11.2f}%"
         lines.append(row)
     lines.append("")
 
     lines.append(thin)
-    lines.append("TIMING")
+    lines.append("TIMING — ENCODE (seconds)")
     lines.append(thin)
     lines.append("")
-    head = f"{'Variant':<18} {'Encode':>10} {'Decode':>10}"
-    for name, _window, _factory in BASELINES:
-        head += f" {name:>12}"
+    head = f"{'Variant':<18} {'CCP':>10}"
+    for baseline in columns:
+        head += f" {baseline.name:>12}"
     lines.append(head)
     lines.append("-" * len(head))
     for r in results:
-        row = f"{r.variant:<18} {r.encode_seconds:>9.2f}s {r.decode_seconds:>9.2f}s"
-        for name, _window, _factory in BASELINES:
-            seconds = r.baseline_seconds.get(name)
+        row = f"{r.variant:<18} {r.encode_seconds:>9.2f}s"
+        for baseline in columns:
+            seconds = r.baseline_encode_seconds.get(baseline.name)
+            row += f" {'-':>12}" if seconds is None else f" {seconds:>11.2f}s"
+        lines.append(row)
+    lines.append("")
+
+    lines.append(thin)
+    lines.append("TIMING — DECODE (seconds)")
+    lines.append(thin)
+    lines.append("")
+    lines.append("This is the column that decides whether a representation can sit in")
+    lines.append("a model-loading path.")
+    lines.append("")
+    lines.append(head)
+    lines.append("-" * len(head))
+    for r in results:
+        row = f"{r.variant:<18} {r.decode_seconds:>9.2f}s"
+        for baseline in columns:
+            seconds = r.baseline_decode_seconds.get(baseline.name)
             row += f" {'-':>12}" if seconds is None else f" {seconds:>11.2f}s"
         lines.append(row)
     lines.append("")
@@ -361,22 +471,30 @@ def render(
             f"({r.bytes_changed} bytes moved)"
         )
     lines.append("")
-    long_window = BASELINES[-1][0]
+    rival = BASELINES[-1]
     if identical:
-        rival = identical.baseline_saving(long_window)
-        if rival is not None:
+        rival_saving = identical.baseline_saving(rival.name)
+        combo_saving = identical.baseline_saving(COMBINATIONS[0].name)
+        if rival_saving is not None:
             lines.append("")
             lines.append(
-                f"  On identical checkpoints a {BASELINES[-1][1]} compressor reaches "
-                f"{rival:.2f}%,"
+                f"  On identical checkpoints {rival.name} ({rival.window}) reaches "
+                f"{rival_saving:.2f}%,"
             )
             lines.append(
-                f"  against CCP's {identical.ccp_saving_percent:.2f}%. Cross-copy"
+                f"  against CCP's {identical.ccp_saving_percent:.2f}%. Cross-copy "
+                f"redundancy is not exclusive"
             )
             lines.append(
-                "  redundancy is not exclusive to this method — what differs is the"
+                "  to this method, and a compressor given a large enough window beats "
+                "it outright."
             )
-            lines.append("  cost of getting at it. See the timing table.")
+            if combo_saving is not None:
+                lines.append(
+                    f"  The two stages together reach {combo_saving:.2f}%. Compare the "
+                    f"decode column"
+                )
+                lines.append("  before reading any of these as a ranking.")
     lines.append("")
     if sparse and dense:
         best_sparse = max(sparse, key=lambda r: r.ccp_saving_percent)
