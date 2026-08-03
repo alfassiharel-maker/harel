@@ -256,6 +256,50 @@ class TestContainerValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             ccp.decode_bytes(bytes(corrupt))
 
+    def test_inconsistent_position_width_is_rejected(self) -> None:
+        corrupt = bytearray(self.container)
+        offset = ccp.HEADER_STRUCT.size - 32 - 1
+        self.assertEqual(corrupt[offset], ccp.position_width(1024))
+        corrupt[offset] = 7
+        with self.assertRaises(ValueError):
+            ccp.decode_bytes(bytes(corrupt))
+
+    def test_out_of_range_base_index_is_rejected(self) -> None:
+        corrupt = bytearray(self.container)
+        for index in range(8):
+            entry = ccp.HEADER_STRUCT.size + index * ccp.TABLE_STRUCT.size
+            if corrupt[entry] == ccp.TYPE_CCP:
+                corrupt[entry + 1 : entry + 5] = (9999).to_bytes(4, "little")
+                with self.assertRaises(ValueError):
+                    ccp.decode_bytes(bytes(corrupt))
+                return
+        self.skipTest("fixture contained no delta region to corrupt")
+
+    def test_out_of_range_delta_position_is_rejected(self) -> None:
+        view = memoryview(bytes(self.container))
+        header = ccp.read_header(view)
+        view.release()
+        offset = ccp.HEADER_STRUCT.size + header.region_count * ccp.TABLE_STRUCT.size
+        for index in range(header.region_count):
+            entry = ccp.HEADER_STRUCT.size + index * ccp.TABLE_STRUCT.size
+            kind = self.container[entry]
+            if kind == ccp.TYPE_ORIGINAL:
+                offset += header.region_size
+                continue
+            count = int.from_bytes(
+                self.container[offset : offset + ccp.COUNT_STRUCT.size], "little"
+            )
+            self.assertGreater(count, 0)
+            corrupt = bytearray(self.container)
+            position_at = offset + ccp.COUNT_STRUCT.size
+            corrupt[position_at : position_at + header.pos_width] = (
+                header.region_size
+            ).to_bytes(header.pos_width, "little")
+            with self.assertRaises(ValueError):
+                ccp.decode_bytes(bytes(corrupt))
+            return
+        self.skipTest("fixture contained no delta region to corrupt")
+
 
 class TestClustering(unittest.TestCase):
     def test_identical_regions_land_together(self) -> None:

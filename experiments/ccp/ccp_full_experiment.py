@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import mmap
 import os
 import re
@@ -551,6 +550,12 @@ def read_header(view: memoryview) -> ContainerHeader:
         raise ValueError("bad region size in header")
     if tail >= region_size and count > 0:
         raise ValueError("tail length must be smaller than region size")
+    # pos_width comes from the container, so a hostile or corrupt file could
+    # claim a width that does not match the region it is addressing.
+    if pos_width != position_width(region_size):
+        raise ValueError(
+            f"position width {pos_width} does not match region size {region_size}"
+        )
     if count * region_size + tail != original_size:
         raise ValueError("header region accounting does not match original size")
     return ContainerHeader(region_size, original_size, count, tail, pos_width, digest)
