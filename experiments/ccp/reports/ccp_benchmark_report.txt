@@ -1,0 +1,145 @@
+====================================================================================================
+CCP BENCHMARK — DATASET COMPARISON
+====================================================================================================
+
+Datasets evaluated: 14
+Total wall time:    1305.7s
+
+----------------------------------------------------------------------------------------------------
+HEADLINE TABLE
+----------------------------------------------------------------------------------------------------
+
+Dataset                                Original      CCP size    Saving   Region  Verify
+----------------------------------------------------------------------------------------
+drifting_duplicate                     64.00 MB      55.71 MB    12.95% 256.00 KB    PASS
+exact_repeats                          64.00 MB       1.00 MB    98.44%  1.00 MB    PASS
+fp32_weights                           64.00 MB      64.00 MB    -0.00%  4.00 MB    PASS
+int8_weights                           64.00 MB      64.00 MB    -0.00%  4.00 MB    PASS
+near_duplicate_4k                      64.00 MB       5.88 MB    90.81%  1.00 MB    PASS
+near_duplicate_64k                     64.00 MB       5.57 MB    91.29%  1.00 MB    PASS
+random_control                         64.00 MB      64.00 MB    -0.00%  4.00 MB    PASS
+sparse_weights                         64.00 MB      13.48 MB    78.94%  1.00 MB    PASS
+structured_records                     64.00 MB      64.00 MB    -0.00%  4.00 MB    PASS
+zeros                                  64.00 MB       1.00 MB    98.44%  1.00 MB    PASS
+bert-tiny.bin                          16.93 MB      16.93 MB    -0.00%  4.00 MB    PASS
+distilbert-fp32.safetensors           255.54 MB     255.54 MB    -0.00%  4.00 MB    PASS
+gpt2-fp32.safetensors                 522.71 MB     491.40 MB     5.99%  4.00 KB    PASS
+qwen2.5-0.5b-q8_0.gguf                644.41 MB     644.02 MB     0.06% 64.00 KB    PASS
+
+----------------------------------------------------------------------------------------------------
+CCP VERSUS GENERAL-PURPOSE COMPRESSION
+----------------------------------------------------------------------------------------------------
+
+Percentages are size reduction against the original. 'p' marks a
+value measured on the first 128.00 MB only.
+
+Dataset                                  CCP   CCP+gzip     gzip-6     gzip-9    bzip2-9     lzma-6
+---------------------------------------------------------------------------------------------------
+drifting_duplicate                    12.95%     15.19%    -0.03%     -0.03%     14.80%     41.90% 
+exact_repeats                         98.44%     98.44%    -0.03%     -0.03%     87.14%     99.89% 
+fp32_weights                          -0.00%      7.24%     7.24%      7.24%      5.15%      8.08% 
+int8_weights                          -0.00%     16.89%    16.89%     16.89%     16.66%     16.26% 
+near_duplicate_4k                     90.81%     92.99%    95.75%     95.84%     94.05%     97.35% 
+near_duplicate_64k                    91.29%     91.93%    -0.03%     -0.03%     82.56%     97.45% 
+random_control                        -0.00%     -0.03%    -0.03%     -0.03%     -0.45%     -0.01% 
+sparse_weights                        78.94%     82.91%    92.42%     92.95%     95.40%     94.30% 
+structured_records                    -0.00%     78.32%    78.32%     74.85%     80.41%     92.39% 
+zeros                                 98.44%    100.00%    99.90%     99.90%    100.00%     99.99% 
+bert-tiny.bin                         -0.00%      7.42%     7.42%      7.42%      5.10%      8.09% 
+distilbert-fp32.safetensors           -0.00%      7.78%     7.78%      7.78%      5.93%p     9.42%p
+gpt2-fp32.safetensors                  5.99%     15.57%    15.55%     15.56%     19.82%p    22.23%p
+qwen2.5-0.5b-q8_0.gguf                 0.06%      4.89%     4.89%      4.90%      5.19%p     6.93%p
+
+----------------------------------------------------------------------------------------------------
+STRUCTURAL FINDINGS
+----------------------------------------------------------------------------------------------------
+
+Dataset                              Regions     Delta  Verbatim   Bases   Changed bytes       Index
+----------------------------------------------------------------------------------------------------
+drifting_duplicate                       256        70       186       1         2415231     1.31 KB
+exact_repeats                             64        63         1       1               0    378.00 B
+fp32_weights                              16         0        16       0               0    138.00 B
+int8_weights                              16         0        16       0               0    138.00 B
+near_duplicate_4k                         64        63         1       1         1278753    378.00 B
+near_duplicate_64k                        64        63         1       1         1198694    378.00 B
+random_control                            16         0        16       0               0    138.00 B
+sparse_weights                            64        63         1       1         3271298    378.00 B
+structured_records                        16         0        16       0               0    138.00 B
+zeros                                     64        63         1       1               0    378.00 B
+bert-tiny.bin                              5         0         5       0               0     78.00 B
+distilbert-fp32.safetensors               64         0        64       0               0    373.00 B
+gpt2-fp32.safetensors                 133815      8188    125627    3067               0   653.45 KB
+qwen2.5-0.5b-q8_0.gguf                 10311         8     10303       1           20878    50.40 KB
+
+----------------------------------------------------------------------------------------------------
+PERFORMANCE
+----------------------------------------------------------------------------------------------------
+
+Dataset                                Encode     Decode   Enc MB/s   Dec MB/s    Peak RSS
+------------------------------------------------------------------------------------------
+drifting_duplicate                      1.77s      2.04s       36.1       31.3   261.13 MB
+exact_repeats                           1.23s      0.95s       52.0       67.1   105.11 MB
+fp32_weights                            0.20s      0.82s      318.0       78.3   146.65 MB
+int8_weights                            0.15s      0.67s      438.5       95.5   146.61 MB
+near_duplicate_4k                       2.02s      1.23s       31.7       52.0   120.35 MB
+near_duplicate_64k                      1.81s      1.24s       35.3       51.5   117.46 MB
+random_control                          0.29s      1.43s      223.0       44.8   146.81 MB
+sparse_weights                          2.79s      2.22s       23.0       28.8   141.34 MB
+structured_records                      0.71s      0.89s       90.8       72.2   146.11 MB
+zeros                                   0.87s      0.64s       73.8      100.3   105.51 MB
+bert-tiny.bin                           0.04s      0.20s      442.3       84.3    52.48 MB
+distilbert-fp32.safetensors             0.63s      2.93s      404.3       87.2   499.34 MB
+gpt2-fp32.safetensors                   9.98s      5.14s       52.4      101.7   969.82 MB
+qwen2.5-0.5b-q8_0.gguf                  3.98s      8.94s      161.9       72.1     1.17 GB
+
+----------------------------------------------------------------------------------------------------
+REGION SIZE SENSITIVITY (saving % by region size)
+----------------------------------------------------------------------------------------------------
+
+Dataset                               4.00 KB   16.00 KB   64.00 KB  256.00 KB    1.00 MB    4.00 MB
+----------------------------------------------------------------------------------------------------
+drifting_duplicate                      8.37%      8.67%      8.20%     12.95%     11.38%      5.99%
+exact_repeats                           6.02%      6.12%      6.14%     24.61%     98.44%     93.75%
+fp32_weights                           -0.12%     -0.03%     -0.01%     -0.00%     -0.00%     -0.00%
+int8_weights                           -0.12%     -0.03%     -0.01%     -0.00%     -0.00%     -0.00%
+near_duplicate_4k                      20.89%      8.34%      8.18%     25.94%     90.81%     86.50%
+near_duplicate_64k                      8.05%      8.02%      8.49%     26.44%     91.29%     86.95%
+random_control                         -0.12%     -0.03%     -0.01%     -0.00%     -0.00%     -0.00%
+sparse_weights                         63.73%     42.77%     24.54%     36.31%     78.94%     75.25%
+structured_records                     -0.12%     -0.03%     -0.01%     -0.00%     -0.00%     -0.00%
+zeros                                   0.26%      1.51%      6.14%     24.61%     98.44%     93.75%
+bert-tiny.bin                          -0.12%     -0.03%     -0.01%     -0.00%     -0.00%     -0.00%
+distilbert-fp32.safetensors            -0.12%     -0.03%     -0.01%     -0.00%     -0.00%     -0.00%
+gpt2-fp32.safetensors                   5.99%      3.07%      2.44%      0.72%     -0.00%      0.57%
+qwen2.5-0.5b-q8_0.gguf                 -0.08%     -0.03%      0.06%      0.04%     -0.00%     -0.00%
+
+----------------------------------------------------------------------------------------------------
+WHERE CCP WORKS
+----------------------------------------------------------------------------------------------------
+
+  exact_repeats                                  98.44%  (one 64KB block repeated verbatim)
+  zeros                                          98.44%  (all zero bytes (positive control))
+  near_duplicate_64k                             91.29%  (64KB base block, ~1% of bytes mutated per region)
+  near_duplicate_4k                              90.81%  (4KB base block, ~1% of bytes mutated per region)
+  sparse_weights                                 78.94%  (pruned weights: ~5% non-zero)
+  drifting_duplicate                             12.95%  (near-duplicates whose mutation rate crosses break-even)
+  gpt2-fp32.safetensors                           5.99%  (real file, 522.71 MB)
+
+----------------------------------------------------------------------------------------------------
+WHERE CCP DOES NOT WORK
+----------------------------------------------------------------------------------------------------
+
+  bert-tiny.bin                                  -0.00%  (real file, 16.93 MB)
+  fp32_weights                                   -0.00%  (simulated dense fp32 weights, bell-shaped)
+  int8_weights                                   -0.00%  (simulated int8 quantized weights)
+  random_control                                 -0.00%  (incompressible hash stream (negative control))
+  structured_records                             -0.00%  (fixed-layout binary records (ordinary data))
+  distilbert-fp32.safetensors                    -0.00%  (real file, 255.54 MB)
+
+----------------------------------------------------------------------------------------------------
+VERIFICATION
+----------------------------------------------------------------------------------------------------
+
+  Round-trips verified by SHA-256: 14/14
+
+====================================================================================================
