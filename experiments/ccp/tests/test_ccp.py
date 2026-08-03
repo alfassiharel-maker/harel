@@ -18,6 +18,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import ccp_datasets  # noqa: E402
 import ccp_full_experiment as ccp  # noqa: E402
+from ccp_checkpoint_experiment import (  # noqa: E402
+    VARIANTS,
+    perturb_dense,
+    perturb_sparse,
+)
 from ccp_layer_analysis import deinterleave, reinterleave  # noqa: E402
 
 
@@ -397,6 +402,76 @@ class TestByteePlaneTransform(unittest.TestCase):
     def test_width_one_is_the_identity(self) -> None:
         data = ccp_datasets.hash_bytes(100, 1)
         self.assertEqual(deinterleave(data, 1), data)
+
+
+class TestCheckpointPerturbations(unittest.TestCase):
+    """The checkpoint variants have to move the number of bytes they claim.
+
+    The whole conclusion of that experiment rests on the contrast between a
+    sparse update and a dense one, so an off-by-a-factor here would invent a
+    finding rather than measure one.
+    """
+
+    def setUp(self) -> None:
+        self.floats = 4096
+        self.data = ccp_datasets.hash_bytes(self.floats * 4, 31)
+
+    def test_dense_one_lane_touches_every_value_once(self) -> None:
+        mutated = bytearray(self.data)
+        reported = perturb_dense(mutated, (0,), seed=2)
+        differing = sum(1 for a, b in zip(self.data, mutated) if a != b)
+        self.assertEqual(reported, differing)
+        self.assertLessEqual(differing, self.floats)
+        # Only lane 0 may move; the exponent and sign byte must stay put.
+        for lane in (1, 2, 3):
+            self.assertEqual(
+                self.data[lane::4], bytes(mutated[lane::4]), f"lane {lane} moved"
+            )
+
+    def test_dense_two_lanes_move_more_than_one(self) -> None:
+        one = bytearray(self.data)
+        two = bytearray(self.data)
+        self.assertLess(
+            perturb_dense(one, (0,), seed=3), perturb_dense(two, (0, 1), seed=3)
+        )
+
+    def test_sparse_fraction_is_honoured(self) -> None:
+        for fraction in (0.001, 0.01, 0.1):
+            mutated = bytearray(self.data)
+            reported = perturb_sparse(mutated, fraction, seed=4)
+            with self.subTest(fraction=fraction):
+                expected = self.floats * fraction * 4
+                self.assertAlmostEqual(reported, expected, delta=expected * 0.25 + 4)
+
+    def test_sparse_reports_no_more_than_it_moved(self) -> None:
+        mutated = bytearray(self.data)
+        reported = perturb_sparse(mutated, 0.05, seed=5)
+        differing = sum(1 for a, b in zip(self.data, mutated) if a != b)
+        # A replacement byte can coincide with the original, so the count of
+        # actually-differing bytes is a lower bound on the bytes rewritten.
+        self.assertLessEqual(differing, reported)
+        self.assertGreater(differing, 0)
+
+    def test_sparse_with_zero_fraction_changes_nothing(self) -> None:
+        mutated = bytearray(self.data)
+        self.assertEqual(perturb_sparse(mutated, 0.0, seed=6), 0)
+        self.assertEqual(bytes(mutated), self.data)
+
+    def test_perturbations_are_deterministic(self) -> None:
+        first = bytearray(self.data)
+        second = bytearray(self.data)
+        perturb_dense(first, (0,), seed=7)
+        perturb_dense(second, (0,), seed=7)
+        self.assertEqual(first, second)
+
+    def test_every_variant_produces_a_pair_that_round_trips(self) -> None:
+        for variant in VARIANTS:
+            mutated = bytearray(self.data)
+            variant.apply(mutated, 1)
+            pair = self.data + bytes(mutated)
+            with self.subTest(variant=variant.name):
+                container = ccp.encode_bytes(pair, 4096)
+                self.assertEqual(ccp.decode_bytes(container), pair)
 
 
 class TestEndToEnd(unittest.TestCase):

@@ -158,18 +158,26 @@ def _stream_size(path: str, compressor: object) -> int:
     return total + len(compressor.flush())  # type: ignore[attr-defined]
 
 
-def _decompress_seconds(path: str, decompressor: object) -> float:
+def _decompress_seconds(path: str, decompressor: object, expected_bytes: int) -> float:
     """Time a full decompression of `path`, discarding the output.
 
     Decode speed is the number that decides whether a representation can sit in
-    a model-loading path at all, so it is measured rather than assumed to
-    mirror compression speed.
+    a model-loading path at all, so it is measured rather than assumed to mirror
+    compression speed. The output length is checked against what went in,
+    because a decode that quietly produced nothing would otherwise be recorded
+    as an impressively fast one.
     """
+    produced = 0
     started = time.monotonic()
     with open(path, "rb") as f:
         while chunk := f.read(4 * 1024 * 1024):
-            decompressor.decompress(chunk)  # type: ignore[attr-defined]
-    return time.monotonic() - started
+            produced += len(decompressor.decompress(chunk))  # type: ignore[attr-defined]
+    seconds = time.monotonic() - started
+    if produced != expected_bytes:
+        raise RuntimeError(
+            f"decompressing {path} produced {produced} bytes, expected {expected_bytes}"
+        )
+    return seconds
 
 
 def gzip_size(path: str) -> int:
@@ -296,7 +304,7 @@ def run_pair(
         baselines[baseline.name] = size
         encode_seconds[baseline.name] = seconds
         decode_seconds[baseline.name] = _decompress_seconds(
-            scratch, baseline.decompressor()
+            scratch, baseline.decompressor(), pair_bytes
         )
         os.unlink(scratch)
 
@@ -316,7 +324,11 @@ def run_pair(
             # combination is the encode time of both stages.
             encode_seconds[combination.name] = seconds + best.encode_seconds
             decode_seconds[combination.name] = (
-                _decompress_seconds(scratch, combination.decompressor())
+                _decompress_seconds(
+                    scratch,
+                    combination.decompressor(),
+                    os.path.getsize(container),
+                )
                 + best.decode_seconds
             )
             os.unlink(scratch)
@@ -570,9 +582,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = run_pair(base, variant, region_sizes, workdir, args.seed)
             results.append(result)
             summary = "  ".join(
-                f"{name} {result.baseline_saving(name):.2f}%"
-                for name, _window, _factory in BASELINES
-                if result.baseline_saving(name) is not None
+                f"{baseline.name} {result.baseline_saving(baseline.name):.2f}%"
+                for baseline in BASELINES + COMBINATIONS
+                if result.baseline_saving(baseline.name) is not None
             )
             print(
                 f"    CCP {result.ccp_saving_percent:.2f}%  {summary}  "
