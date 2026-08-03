@@ -1,0 +1,95 @@
+================================================================================================
+CCP ACROSS TWO MODEL VERSIONS
+================================================================================================
+
+Base weights      /home/user/harel/experiments/ccp/data/gpt2-fp32.safetensors (offset 1048576, sha256 54e9994c9b57f00d...)
+Slice measured    16.00 MB per checkpoint
+Pair size         32.00 MB
+Wall time         303.3s
+
+Each row stores two checkpoints as one file. A scheme that stored
+one copy and a free delta would reach 50%; that is the ceiling.
+
+Variant              Bytes changed      CCP    Region   Delta regions  Verify
+-----------------------------------------------------------------------------
+identical                    0   0%   49.99%  64.00 KB     256/512        PASS
+sparse_0.1pct            16780   0%   49.84%  64.00 KB     256/512        PASS
+sparse_1pct             167776   1%   48.50%  64.00 KB     256/512        PASS
+sparse_10pct           1677724  10%    1.22%  64.00 KB       9/512        PASS
+dense_low_byte         4194304  25%   -0.01%  64.00 KB       0/512        PASS
+dense_two_bytes        8388608  50%   -0.01%  64.00 KB       0/512        PASS
+
+------------------------------------------------------------------------------------------------
+AGAINST GENERAL-PURPOSE COMPRESSION
+------------------------------------------------------------------------------------------------
+
+A compressor can only exploit the second copy if its match window
+reaches back that far. The window is stated for each baseline.
+
+  gzip-6       32KB window
+  lzma-6       8MB dictionary
+  lzma-long    512MB dictionary
+  ccp+gzip     CCP container then gzip-6
+
+Variant                  CCP       gzip-6       lzma-6    lzma-long     ccp+gzip
+--------------------------------------------------------------------------------
+identical             49.99%        6.82%        7.52%       53.75%       53.41%
+sparse_0.1pct         49.84%        6.81%        7.52%       53.69%       53.26%
+sparse_1pct           48.50%        6.76%        7.45%       53.21%       51.94%
+sparse_10pct           1.22%        6.26%        6.81%       48.64%        7.39%
+dense_low_byte        -0.01%        6.82%        7.52%        7.79%        6.82%
+dense_two_bytes       -0.01%        6.79%        7.30%        7.55%        6.79%
+
+------------------------------------------------------------------------------------------------
+TIMING — ENCODE (seconds)
+------------------------------------------------------------------------------------------------
+
+Variant                   CCP       gzip-6       lzma-6    lzma-long     ccp+gzip
+---------------------------------------------------------------------------------
+identical               0.54s        1.52s       21.67s       14.74s        1.26s
+sparse_0.1pct           0.52s        1.48s       21.22s       13.19s        1.24s
+sparse_1pct             0.65s        1.54s       20.67s       15.72s        1.39s
+sparse_10pct            0.45s        1.88s       23.74s       18.23s        1.97s
+dense_low_byte          0.12s        1.48s       19.20s       20.42s        1.67s
+dense_two_bytes         0.11s        1.54s       20.93s       19.56s        1.55s
+
+------------------------------------------------------------------------------------------------
+TIMING — DECODE (seconds)
+------------------------------------------------------------------------------------------------
+
+This is the column that decides whether a representation can sit in
+a model-loading path.
+
+Variant                   CCP       gzip-6       lzma-6    lzma-long     ccp+gzip
+---------------------------------------------------------------------------------
+identical               0.18s        0.19s        2.32s        1.17s        0.27s
+sparse_0.1pct           0.12s        0.18s        2.53s        1.23s        0.24s
+sparse_1pct             0.20s        0.19s        2.25s        1.53s        0.29s
+sparse_10pct            0.70s        0.18s        2.46s        1.33s        0.89s
+dense_low_byte          0.12s        0.18s        2.43s        2.35s        0.31s
+dense_two_bytes         0.12s        0.18s        2.39s        2.39s        0.32s
+
+------------------------------------------------------------------------------------------------
+READING
+------------------------------------------------------------------------------------------------
+
+  Two identical checkpoints:      49.99% (ceiling is 50%)
+  0.1% of weights replaced outright   49.84%  (16780 bytes moved)
+  1% of weights replaced outright   48.50%  (167776 bytes moved)
+  10% of weights replaced outright    1.22%  (1677724 bytes moved)
+  every weight nudged by ~1 ulp    -0.01%  (4194304 bytes moved)
+  every weight nudged, two mantissa bytes   -0.01%  (8388608 bytes moved)
+
+
+  On identical checkpoints lzma-long (512MB dictionary) reaches 53.75%,
+  against CCP's 49.99%. Cross-copy redundancy is not exclusive
+  to this method, and a compressor given a large enough window beats it outright.
+  The two stages together reach 53.41%. Compare the decode column
+  before reading any of these as a ranking.
+
+  A sparse update keeps 49.84% while a
+  dense one-unit-in-the-last-place update keeps -0.01%, even though the dense
+  update moves every weight by a smaller amount than the sparse one.
+  What matters to the method is how many bytes move, not how far.
+
+================================================================================================
