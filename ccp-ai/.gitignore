@@ -1,0 +1,5 @@
+# The store holds generated model bytes — never commit them.
+.store/
+demo/models/
+__pycache__/
+*.pyc

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CCP-AI · lossless model delta storage</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2337d39f'/%3E%3Cpath d='M9 21V11h5m4 0v10h5' stroke='%2304120d' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">CCP</span>
+    <div>
+      <h1 data-i18n="brandTitle">CCP-AI</h1>
+      <p class="tagline" data-i18n="brandTagline">Lossless base + delta storage for model weights</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="pill" id="enginePill">engine —</span>
+    <span class="pill" id="tenantPill">tenant —</span>
+    <button class="ghost" id="langToggle" type="button">עברית</button>
+  </div>
+</header>
+
+<main>
+  <!-- ── The switch ────────────────────────────────────────────────────── -->
+  <section class="panel hero">
+    <div class="hero-switch">
+      <div class="switch-label">
+        <h2 data-i18n="switchTitle">CCP savings</h2>
+        <p id="switchState" class="switch-state" data-i18n="switchOff">OFF — full checkpoints on disk</p>
+      </div>
+      <button id="ccpSwitch" class="switch" role="switch" aria-checked="false" type="button">
+        <span class="knob"></span>
+        <span class="switch-text off" data-i18n="off">OFF</span>
+        <span class="switch-text on" data-i18n="on">ON</span>
+      </button>
+      <p class="switch-note" data-i18n="switchNote">
+        Flipping this migrates real bytes on disk. Off writes full checkpoints back out; on re-encodes
+        them as verified deltas. Nothing here is a display setting.
+      </p>
+    </div>
+
+    <div class="hero-metrics">
+      <div class="metric big">
+        <span class="metric-label" data-i18n="onDisk">On disk now</span>
+        <strong id="diskNow">—</strong>
+        <span class="metric-sub" id="diskNowCost">—</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label" data-i18n="registryBaseline">Registry baseline</span>
+        <strong id="diskFull">—</strong>
+        <span class="metric-sub" id="diskFullCost">—</span>
+      </div>
+      <div class="metric accent">
+        <span class="metric-label" data-i18n="fleetSaving">Fleet saving (measured)</span>
+        <strong id="fleetSaving">—</strong>
+        <span class="metric-sub" id="fleetSavingBytes">—</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label" data-i18n="losslessLabel">Reconstruction</span>
+        <strong id="losslessBadge" class="badge neutral" data-i18n="notChecked">not checked</strong>
+        <span class="metric-sub" id="losslessSub">—</span>
+      </div>
+    </div>
+
+    <div class="bar-compare" aria-hidden="true">
+      <div class="bar-row">
+        <span class="bar-tag" data-i18n="barFull">full copies</span>
+        <div class="bar"><div class="bar-fill baseline" id="barFull"></div></div>
+        <span class="bar-value" id="barFullValue">—</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-tag" data-i18n="barCcp">CCP deltas</span>
+        <div class="bar"><div class="bar-fill ccp" id="barCcp"></div></div>
+        <span class="bar-value" id="barCcpValue">—</span>
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      <button id="seedBtn" class="primary" type="button" data-i18n="seedBtn">Seed model family</button>
+      <button id="verifyBtn" class="secondary" type="button" data-i18n="verifyBtn">Verify losslessness</button>
+      <button id="resetBtn" class="ghost" type="button" data-i18n="resetBtn">Reset</button>
+      <span id="actionNote" class="action-note"></span>
+    </div>
+
+    <div id="jobBox" class="job hidden">
+      <div class="job-head">
+        <span id="jobMessage">working…</span>
+        <span id="jobPercent">0%</span>
+      </div>
+      <div class="progress"><div id="jobBar" class="progress-fill"></div></div>
+      <ul id="jobSteps" class="job-steps"></ul>
+    </div>
+
+    <div id="switchResult" class="switch-result hidden"></div>
+  </section>
+
+  <!-- ── Variants ──────────────────────────────────────────────────────── -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-i18n="variantsTitle">Model family</h2>
+      <p data-i18n="variantsSub">
+        Every row is a real checkpoint on disk. Savings are measured per variant, never modelled.
+      </p>
+    </div>
+    <div class="table-scroll">
+      <table id="variantsTable">
+        <thead>
+          <tr>
+            <th data-i18n="thVariant">Variant</th>
+            <th data-i18n="thKind">Kind</th>
+            <th class="num" data-i18n="thRaw">Full size</th>
+            <th class="num" data-i18n="thGzip">gzip -6</th>
+            <th class="num" data-i18n="thCcp">CCP</th>
+            <th class="num" data-i18n="thSaving">Saving</th>
+            <th class="num" data-i18n="thVsGzip">vs gzip</th>
+            <th data-i18n="thComposition">Composition</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="variantsBody">
+          <tr class="empty"><td colspan="9" data-i18n="noVariants">Nothing stored yet — seed the model family.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="compositionLegend" class="legend"></div>
+  </section>
+
+  <!-- ── Projection ────────────────────────────────────────────────────── -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-i18n="projTitle">Projection to production scale</h2>
+      <p data-i18n="projSub">
+        The measured per-variant ratio above, applied to a fleet you choose. This is an extrapolation —
+        the ratio is real, the fleet is hypothetical, and the unit prices are AWS S3 list.
+      </p>
+    </div>
+    <div class="proj-controls">
+      <label>
+        <span data-i18n="projParams">Model size (B params)</span>
+        <input id="projParams" type="number" min="0.1" max="2000" step="0.5" value="7">
+      </label>
+      <label>
+        <span data-i18n="projVariants">Variants published</span>
+        <input id="projVariants" type="number" min="1" max="100000" step="1" value="10">
+      </label>
+      <label>
+        <span data-i18n="projDownloads">Downloads per variant</span>
+        <input id="projDownloads" type="number" min="1" max="1000000000" step="1000" value="100000">
+      </label>
+      <button id="projBtn" class="secondary" type="button" data-i18n="projBtn">Recalculate</button>
+    </div>
+    <div class="proj-grid">
+      <div class="proj-card">
+        <h3 data-i18n="projEgress">Egress — one release cycle</h3>
+        <div class="proj-row"><span data-i18n="projToday">Today</span><strong id="egressBase">—</strong></div>
+        <div class="proj-row"><span data-i18n="projWithCcp">With CCP</span><strong id="egressCcp">—</strong></div>
+        <div class="proj-row saved"><span data-i18n="projSaved">Saved</span><strong id="egressSaved">—</strong></div>
+        <p class="proj-note" id="egressBytes">—</p>
+      </div>
+      <div class="proj-card">
+        <h3 data-i18n="projStorage">Storage — per month</h3>
+        <div class="proj-row"><span data-i18n="projToday">Today</span><strong id="storeBase">—</strong></div>
+        <div class="proj-row"><span data-i18n="projWithCcp">With CCP</span><strong id="storeCcp">—</strong></div>
+        <div class="proj-row saved"><span data-i18n="projSaved">Saved</span><strong id="storeSaved">—</strong></div>
+        <p class="proj-note" id="storeBytes">—</p>
+      </div>
+      <div class="proj-card assumptions">
+        <h3 data-i18n="projAssumptions">Assumptions</h3>
+        <ul id="projAssumptions"><li>—</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Mechanism ─────────────────────────────────────────────────────── -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-i18n="mechTitle">Why it compresses</h2>
+      <p data-i18n="mechSub">
+        A fine-tune moves a weight by a fraction of its value. In IEEE-754 that leaves the sign, the
+        exponent and the top mantissa bits untouched. Split the residual into byte planes and the
+        redundancy becomes visible — and compressible. Below: the actual planes of the largest changed
+        tensor in the selected variant.
+      </p>
+    </div>
+    <div id="planeBox" class="plane-box">
+      <p class="muted" data-i18n="planeEmpty">Inspect a variant to see its byte planes.</p>
+    </div>
+  </section>
+
+  <!-- ── Verification + ledger ─────────────────────────────────────────── -->
+  <section class="panel two-col">
+    <div>
+      <div class="panel-head">
+        <h2 data-i18n="verifyTitle">Lossless verification</h2>
+        <p data-i18n="verifySub">
+          Each variant is rebuilt from its container and hashed against the digest recorded when it was
+          pushed. Bit-exact or it fails.
+        </p>
+      </div>
+      <div id="verifyBox" class="verify-box">
+        <p class="muted" data-i18n="verifyEmpty">Not run yet.</p>
+      </div>
+    </div>
+    <div>
+      <div class="panel-head">
+        <h2 data-i18n="ledgerTitle">Operation ledger</h2>
+        <p data-i18n="ledgerSub">
+          Append-only and hash-chained. Every saving shown above traces to an entry here.
+        </p>
+      </div>
+      <div id="ledgerBox" class="ledger-box"><p class="muted">—</p></div>
+    </div>
+  </section>
+
+  <footer class="footnote">
+    <p data-i18n="footer">
+      Numbers on this page come from <code>os.stat</code> on real files and from containers that were
+      built and verified in process. Figures labelled <em>projection</em> apply a measured ratio to a
+      hypothetical fleet.
+    </p>
+  </footer>
+</main>
+
+<div id="drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <h2 id="drawerTitle">—</h2>
+    <button id="drawerClose" class="ghost" type="button" aria-label="Close">✕</button>
+  </div>
+  <div id="drawerBody" class="drawer-body"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
