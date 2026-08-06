@@ -50,3 +50,6 @@ ml/artifacts/
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+# scout run outputs
+scout/runs/
