@@ -67,6 +67,7 @@ __all__ = [
     "Savings",
     "SavingsAccumulator",
     "position_width",
+    "resolve_allowed",
     "xor_bytes",
     "residual_stats",
     "codec_costs",
@@ -300,18 +301,42 @@ class BlockPlan:
         return CODEC_NAMES[self.codec]
 
 
-def _choose(costs: dict[int, int]) -> int:
+def _choose(costs: dict[int, int], allowed: frozenset[int] | None) -> int:
     # Cost first; base-independence second; codec id last, purely so the choice
     # is total and reproducible. Determinism matters here — the same input must
     # always produce the same container, or round-trip tests cannot be trusted.
-    return min(costs, key=lambda c: (costs[c], 0 if c in _BASE_FREE else 1, c))
+    permitted = costs if allowed is None else {c: v for c, v in costs.items() if c in allowed}
+    return min(permitted, key=lambda c: (permitted[c], 0 if c in _BASE_FREE else 1, c))
 
 
-def plan_block(base: bytes, target: bytes) -> BlockPlan:
+def resolve_allowed(allowed: frozenset[int] | None) -> frozenset[int] | None:
+    """Normalise a codec restriction, forcing in the two that must never be barred.
+
+    RAW is what bounds the encoder — without it a block could be forced into a
+    representation larger than itself. IDENTICAL costs one byte and is never not
+    the right answer for an unchanged block. A policy that excluded either would
+    be a bug in the policy, so L1 refuses to honour it rather than trusting the
+    caller.
+    """
+    if allowed is None:
+        return None
+    resolved = frozenset(allowed) | {CODEC_IDENTICAL, CODEC_RAW}
+    unknown = resolved - set(CODEC_NAMES)
+    if unknown:
+        raise ValueError(f"unknown codec ids: {sorted(unknown)}")
+    return resolved
+
+
+def plan_block(base: bytes, target: bytes, allowed: frozenset[int] | None = None) -> BlockPlan:
     """Decide how one block should be stored, without encoding it.
 
     This is the L1/L2 seam: L2 can cost a whole stream, or compare two candidate
-    bases, without paying for encoding it will then discard.
+    bases, without paying for encoding it will then discard. `allowed` is how a
+    caller expresses a policy — restricting the codec set trades saving for a
+    property L1 cannot see, such as decode speed.
+
+    `costs` on the returned plan always reports every codec, including barred
+    ones, so the cost of a policy stays visible rather than being hidden by it.
     """
     if len(base) != len(target):
         raise ValueError(f"base and target differ in length: {len(base)} vs {len(target)}")
@@ -319,7 +344,7 @@ def plan_block(base: bytes, target: bytes) -> BlockPlan:
 
     stats = residual_stats(xor_bytes(base, target))
     costs = codec_costs(stats)
-    codec = _choose(costs)
+    codec = _choose(costs, resolve_allowed(allowed))
     return BlockPlan(codec=codec, encoded_bytes=costs[codec], stats=stats, costs=costs)
 
 
@@ -402,13 +427,15 @@ def _encode_bitmap(residual: bytes, n: int) -> bytes:
     return bytes(out)
 
 
-def encode_block(base: bytes, target: bytes) -> bytes:
+def encode_block(base: bytes, target: bytes, allowed: frozenset[int] | None = None) -> bytes:
     """Encode one block against one base, choosing the cheapest representation.
 
     The result is self-describing: `decode_block(base, encode_block(base, t))`
-    returns `t` exactly, for any `base` and `t` of equal length.
+    returns `t` exactly, for any `base` and `t` of equal length, and regardless
+    of which codecs `allowed` permitted — the policy affects size, never
+    correctness, and the decoder needs no knowledge of it.
     """
-    plan = plan_block(base, target)
+    plan = plan_block(base, target, allowed)
     n = len(target)
     w = position_width(n)
 
