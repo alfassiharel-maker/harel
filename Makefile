@@ -24,6 +24,14 @@ check-no-deps: ## Assert the engine imports with no third-party packages present
 test-ccp: ## Run the CCP storage experiment suite, zero deps (experiments/ccp)
 	cd experiments/ccp && $(PY) -m unittest discover -s tests -t . -v
 
+.PHONY: test-bitengine
+test-bitengine: ## Run the BitEngine L1 block engine suite, zero deps (bitengine)
+	cd bitengine && $(PY) -m unittest discover -s tests -t . -v
+
+.PHONY: bench-bitengine
+bench-bitengine: ## Regenerate the L1 throughput and savings table
+	cd bitengine && $(PY) bench_l1.py --size 16MB --block 64KB
+
 # -----------------------------------------------------------------------------
 # Full environment (after architecture approval)
 # -----------------------------------------------------------------------------
@@ -71,7 +79,7 @@ audit: ## Dependency vulnerability audit
 	$(VENV_PY) -m pip_audit -r requirements.txt
 
 .PHONY: ci
-ci: lint types lint-arch test-algorithms test-ccp test test-security audit ## Everything CI runs
+ci: lint types lint-arch test-algorithms test-ccp test-bitengine test test-security audit ## Everything CI runs
 
 # -----------------------------------------------------------------------------
 # Local services
