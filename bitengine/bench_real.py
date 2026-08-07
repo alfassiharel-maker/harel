@@ -5,30 +5,37 @@
     python3 bench_real.py --git 6              version pairs from this repo's history
     python3 bench_real.py --all                all three, the full report
 
-Three categories, because they answer different questions and only one of them
-flatters the engine.
+## Methodology, and a correction
 
-**Single files** ask whether an arbitrary file contains long-range duplication at
-block granularity. Mostly it does not, and an already-compressed file (PNG, a
-`.gz`, an MP4) definitionally does not — entropy coding removes exactly the
-redundancy a delta scheme looks for. These rows are expected to be near zero and
-are reported anyway, because a benchmark that shows only the favourable case is
-marketing.
+An earlier version of this script compared BitEngine against gzip, bzip2 and
+LZMA on the pair rows and reported that BitEngine won. That comparison was
+wrong, and wrong in our favour: BitEngine was given **both** files, while the
+baselines were given only the target. More information for one side is not a
+result.
 
-**Version pairs** ask the question the engine is for: given two versions of one
-thing, how much of the second is already in the first. This is the deployment
-shape `experiments/ccp/FINDINGS.md` §8 identifies as the only one the
-measurements support.
+The rows are now split by what each method was allowed to see.
 
-**Every goal on every file**, not just the one `probe()` picked, so the choice
-can be checked against the alternatives it rejected rather than trusted.
+**Same-information comparisons — the fair ones.** Every method may use the
+reference, and the question is: given version 1, how few bytes are needed to
+reconstruct version 2?
 
-gzip, bzip2 and LZMA run beside BitEngine on identical bytes. LZMA gets a large
-dictionary on the pair rows, because a 32KB window cannot see a duplicate
-megabytes away and beating a crippled opponent would prove nothing. `zstd
---long`, the real production choice for this shape of data, has no
-standard-library binding and is **not** measured — the same gap FINDINGS.md
-§8.1 records, still open.
+    BitEngine            the container, which is a delta against the reference
+    BitEngine + zstd     the container, then entropy-coded
+    zstd --patch-from    zstd with the reference as a raw-content dictionary
+
+`zstd --patch-from` is the production answer to this question and is the
+opponent that matters. `experiments/ccp/FINDINGS.md` §8.1 records that it was
+never measured and that no external claim should be made until it was. It is
+measured here.
+
+**Target-only comparisons — informational.** gzip, bzip2, LZMA and plain zstd
+compressing the target alone, without the reference. They answer a different
+question ("how compressible is this file on its own") and are printed for
+context, never as the thing BitEngine beat.
+
+**Single files** have no reference, so every method sees the same bytes and all
+comparisons on those rows are fair. They are expected to be near zero for
+BitEngine: one file has no second version, so there is no delta to take.
 
 Every row is decoded and compared against its input by SHA-256. A row that does
 not round-trip is reported as a failure, never omitted.
@@ -53,12 +60,26 @@ from dataclasses import dataclass, field
 import l2
 import l3
 
+try:
+    import zstandard
+except ImportError:  # pragma: no cover - exercised by the absence of the package
+    zstandard = None  # type: ignore[assignment]
+
 SCAN_ROOTS = ("/usr/lib", "/usr/share", "/root/.rustup", "/opt")
 SCAN_SUFFIXES = (".so", ".rlib", ".wav", ".png", ".a")
 PROJECT_SUFFIXES = (".py", ".md", ".json", ".txt", ".toml", ".sql")
 
 DEFAULT_LIMIT = 24 * 1024 * 1024
 MIN_INTERESTING = 64 * 1024
+
+# zstd level 19 is its high-ratio setting, the fair counterpart to LZMA preset 6
+# rather than to zstd's speed-oriented default of 3. Level 3 is measured too,
+# because it is what a throughput comparison has to answer to.
+ZSTD_HIGH = 19
+ZSTD_FAST = 3
+# 128MB window. The duplicate in a version pair sits a whole file away, which is
+# past zstd's default window, and --long is exactly the flag that fixes that.
+ZSTD_WINDOW_LOG = 27
 
 
 def format_bytes(n: float) -> str:
@@ -73,6 +94,10 @@ def pct(original: int, encoded: int) -> float:
     return (original - encoded) / original * 100.0 if original else 0.0
 
 
+def show(original: int, encoded: int) -> str:
+    return "n/a" if encoded <= 0 else f"{pct(original, encoded):.2f}%"
+
+
 @dataclass
 class Row:
     label: str
@@ -85,10 +110,24 @@ class Row:
     encode_mbs: float
     decode_mbs: float
     verified: bool
+    has_reference: bool
+
+    # target-only baselines
     gzip_bytes: int = 0
     bzip2_bytes: int = 0
     lzma_bytes: int = 0
-    stacked_bytes: int = 0   # the container, then gzipped
+    zstd_bytes: int = 0
+    zstd_long_bytes: int = 0
+
+    # same-information baselines (pairs only)
+    zstd_patch_bytes: int = 0
+    zstd_patch_encode_mbs: float = 0.0
+    zstd_patch_decode_mbs: float = 0.0
+
+    # BitEngine stacked with an entropy coder
+    stacked_gzip_bytes: int = 0
+    stacked_zstd_bytes: int = 0
+
     alternatives: dict[str, float] = field(default_factory=dict)
 
     @property
@@ -97,11 +136,20 @@ class Row:
 
     @property
     def stacked_pct(self) -> float:
-        """BitEngine then gzip. FINDINGS.md section 3 found this the strongest
-        configuration: the delta removes long-range duplication that gzip's 32KB
-        window cannot reach, and gzip then entropy-codes the residual that the
-        delta leaves untouched. They are complementary, not alternatives."""
-        return pct(self.original, self.stacked_bytes)
+        """BitEngine then zstd — the strongest configuration this engine has.
+
+        The two are complementary rather than competing: the delta removes
+        long-range duplication an entropy coder's window cannot reach, and the
+        entropy coder codes the residual the delta leaves untouched.
+        """
+        return pct(self.original, self.stacked_zstd_bytes)
+
+    @property
+    def best_rival_bytes(self) -> int:
+        """The smallest same-information rival, which for a pair is zstd patch-from."""
+        return self.zstd_patch_bytes if self.has_reference else min(
+            b for b in (self.gzip_bytes, self.lzma_bytes, self.zstd_long_bytes) if b > 0
+        )
 
     def codec_summary(self) -> str:
         if not self.codecs:
@@ -117,19 +165,66 @@ class Row:
 def _lzma_size(data: bytes, big_dictionary: bool) -> int:
     if not big_dictionary:
         return len(lzma.compress(data, preset=6))
-    # A duplicate megabytes away is invisible to a small window, so the pair rows
-    # give LZMA a dictionary big enough to reach it. Less would measure the
-    # window rather than the algorithm.
     dict_size = max(1 << 20, min(1 << 27, 1 << (max(len(data), 2) - 1).bit_length()))
     filters = [{"id": lzma.FILTER_LZMA2, "preset": 6, "dict_size": dict_size}]
     return len(lzma.compress(data, format=lzma.FORMAT_RAW, filters=filters))
 
 
-def baselines(data: bytes, big_dictionary: bool, skip_slow: bool) -> tuple[int, int, int]:
-    gz = len(gzip.compress(data, compresslevel=6, mtime=0))
-    if skip_slow:
-        return gz, 0, 0
-    return gz, len(bz2.compress(data, compresslevel=6)), _lzma_size(data, big_dictionary)
+def _zstd_compressor(level: int, long_range: bool, dictionary: bytes | None = None):  # type: ignore[no-untyped-def]
+    assert zstandard is not None
+    kwargs: dict[str, object] = {}
+    if dictionary is not None:
+        # A raw-content dictionary is what `zstd --patch-from` uses: the
+        # reference is addressable as history rather than trained into a
+        # statistical model.
+        kwargs["dict_data"] = zstandard.ZstdCompressionDict(
+            dictionary, dict_type=zstandard.DICT_TYPE_RAWCONTENT
+        )
+    if long_range:
+        kwargs["compression_params"] = zstandard.ZstdCompressionParameters.from_level(
+            level, enable_ldm=True, window_log=ZSTD_WINDOW_LOG
+        )
+    else:
+        kwargs["level"] = level
+    return zstandard.ZstdCompressor(**kwargs)  # type: ignore[arg-type]
+
+
+def zstd_size(data: bytes, level: int, long_range: bool) -> int:
+    if zstandard is None:
+        return 0
+    return len(_zstd_compressor(level, long_range).compress(data))
+
+
+def zstd_patch_from(target: bytes, reference: bytes) -> tuple[int, float, float, bool]:
+    """`zstd --patch-from`: compress target with reference as history.
+
+    Returns size, encode MB/s, decode MB/s and whether it round-tripped. This is
+    the same job BitEngine does, so it is the only baseline whose ratio may be
+    compared with ours directly.
+    """
+    if zstandard is None:
+        return 0, 0.0, 0.0, False
+
+    compressor = _zstd_compressor(ZSTD_HIGH, long_range=True, dictionary=reference)
+    started = time.perf_counter()
+    packed = compressor.compress(target)
+    encode_seconds = time.perf_counter() - started
+
+    dictionary = zstandard.ZstdCompressionDict(reference, dict_type=zstandard.DICT_TYPE_RAWCONTENT)
+    decompressor = zstandard.ZstdDecompressor(
+        dict_data=dictionary, max_window_size=1 << ZSTD_WINDOW_LOG
+    )
+    started = time.perf_counter()
+    restored = decompressor.decompress(packed, max_output_size=len(target) * 2 + 1024)
+    decode_seconds = time.perf_counter() - started
+
+    megabytes = len(target) / 1e6
+    return (
+        len(packed),
+        megabytes / encode_seconds if encode_seconds else 0.0,
+        megabytes / decode_seconds if decode_seconds else 0.0,
+        restored == target,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -176,11 +271,15 @@ def measure(
     goal = measured[0].goal if measured else l2.goal_named("anchor-dedup").with_block_bytes(4096)
 
     manifest, raw, encode_mbs, decode_mbs, verified = run_goal(data, goal, reference)
-    gz, bz, xz = baselines(data, big_dictionary=reference is not None, skip_slow=skip_slow)
-    stacked = len(gzip.compress(raw, compresslevel=6, mtime=0))
 
-    # Every named goal at its own default block size, so the probe's pick can be
-    # compared against what it rejected instead of being taken on trust.
+    gz = len(gzip.compress(data, compresslevel=6, mtime=0))
+    bz = 0 if skip_slow else len(bz2.compress(data, compresslevel=6))
+    xz = 0 if skip_slow else _lzma_size(data, big_dictionary=reference is not None)
+
+    patch_bytes, patch_enc, patch_dec, patch_ok = (0, 0.0, 0.0, True)
+    if reference is not None:
+        patch_bytes, patch_enc, patch_dec, patch_ok = zstd_patch_from(data, reference)
+
     alternatives: dict[str, float] = {}
     if try_all_goals:
         for name, candidate in l2.GOALS.items():
@@ -202,11 +301,18 @@ def measure(
         change_pct=manifest.block_savings.change_pct if manifest.block_savings else None,
         encode_mbs=encode_mbs,
         decode_mbs=decode_mbs,
-        verified=verified,
+        verified=verified and patch_ok,
+        has_reference=reference is not None,
         gzip_bytes=gz,
         bzip2_bytes=bz,
         lzma_bytes=xz,
-        stacked_bytes=stacked,
+        zstd_bytes=zstd_size(data, ZSTD_HIGH, long_range=False),
+        zstd_long_bytes=zstd_size(data, ZSTD_HIGH, long_range=True),
+        zstd_patch_bytes=patch_bytes,
+        zstd_patch_encode_mbs=patch_enc,
+        zstd_patch_decode_mbs=patch_dec,
+        stacked_gzip_bytes=len(gzip.compress(raw, compresslevel=6, mtime=0)),
+        stacked_zstd_bytes=zstd_size(raw, ZSTD_HIGH, long_range=True) or len(gzip.compress(raw, 6, mtime=0)),
         alternatives=alternatives,
     )
 
@@ -241,7 +347,6 @@ def discover(roots: Sequence[str], suffixes: Sequence[str], per_suffix: int, lim
 
 
 def concatenated_project(root: str, suffixes: Sequence[str], limit: int) -> bytes:
-    """The project's own source, concatenated — a real, highly structured corpus."""
     out = bytearray()
     for directory, subdirs, names in os.walk(root, onerror=lambda _e: None):
         subdirs[:] = sorted(d for d in subdirs if not d.startswith(".") and d != "node_modules")
@@ -259,7 +364,6 @@ def concatenated_project(root: str, suffixes: Sequence[str], limit: int) -> byte
 
 
 def git_pairs(repository: str, count: int, work: str) -> Iterator[tuple[str, bytes, bytes]]:
-    """Tarballs of consecutive revisions — the only genuinely real version pairs here."""
     revisions = subprocess.run(  # noqa: S603
         ["git", "-C", repository, "log", "--format=%H", f"-{count + 1}"],
         capture_output=True,
@@ -290,35 +394,63 @@ def git_pairs(repository: str, count: int, work: str) -> Iterator[tuple[str, byt
 # ---------------------------------------------------------------------------
 
 
-def print_table(title: str, note: str, rows: Sequence[Row], skip_slow: bool) -> None:
+def print_pairs(rows: Sequence[Row]) -> None:
     if not rows:
         return
-    print(f"\n{title}")
-    print(f"  {note}")
+    print("\nVERSION PAIRS — SAME-INFORMATION COMPARISON")
+    print("  Every method may use the reference. Given version 1, how few bytes reconstruct version 2?")
     header = (
-        f"{'file':<28}{'size':>7}{'strategy':>18}{'blk':>6}"
-        f"{'saved':>8}{'+gzip':>8}{'changed':>9}{'gzip':>8}"
+        f"{'pair':<20}{'size':>7}{'changed':>9}"
+        f"{'BitEngine':>11}{'BE+zstd':>10}{'zstd patch':>11}"
+        f"{'BE enc':>9}{'BE dec':>9}{'zstd enc':>10}{'zstd dec':>10}{'ok':>4}"
     )
-    if not skip_slow:
-        header += f"{'bzip2':>8}{'LZMA':>8}"
-    header += f"{'enc':>9}{'dec':>9}{'ok':>4}  codecs"
-    print("  " + "-" * (len(header) + 18))
+    print("  " + "-" * len(header))
     print("  " + header)
-    print("  " + "-" * (len(header) + 18))
+    print("  " + "-" * len(header))
     for row in rows:
         change = "n/a" if row.change_pct is None else f"{row.change_pct:.2f}%"
-        line = (
-            f"{row.label[-28:]:<28}{format_bytes(row.original):>7}{row.goal[:16]:>18}"
-            f"{format_bytes(row.block_bytes):>6}{row.saving_pct:>7.2f}%{row.stacked_pct:>7.2f}%{change:>9}"
-            f"{pct(row.original, row.gzip_bytes):>7.2f}%"
+        print(
+            "  "
+            + f"{row.label[-20:]:<20}{format_bytes(row.original):>7}{change:>9}"
+            + f"{row.saving_pct:>10.2f}%{row.stacked_pct:>9.2f}%"
+            + f"{show(row.original, row.zstd_patch_bytes):>11}"
+            + f"{row.encode_mbs:>6.0f}MB/s{row.decode_mbs:>6.0f}MB/s"
+            + f"{row.zstd_patch_encode_mbs:>7.0f}MB/s{row.zstd_patch_decode_mbs:>7.0f}MB/s"
+            + f"{'yes' if row.verified else 'FAIL':>4}"
         )
-        if not skip_slow:
-            line += f"{pct(row.original, row.bzip2_bytes):>7.2f}%{pct(row.original, row.lzma_bytes):>7.2f}%"
-        line += (
-            f"{row.encode_mbs:>6.0f}MB/s{row.decode_mbs:>6.0f}MB/s"
-            f"{'yes' if row.verified else 'FAIL':>4}  {row.codec_summary()}"
+
+    print("\n  Target-only baselines (informational — these never saw the reference):")
+    sub = f"{'pair':<20}{'gzip':>9}{'bzip2':>9}{'LZMA':>9}{'zstd':>9}{'zstd --long':>13}"
+    print("  " + sub)
+    for row in rows:
+        print(
+            "  "
+            + f"{row.label[-20:]:<20}{show(row.original, row.gzip_bytes):>9}"
+            + f"{show(row.original, row.bzip2_bytes):>9}{show(row.original, row.lzma_bytes):>9}"
+            + f"{show(row.original, row.zstd_bytes):>9}{show(row.original, row.zstd_long_bytes):>13}"
         )
-        print("  " + line)
+
+
+def print_singles(rows: Sequence[Row]) -> None:
+    if not rows:
+        return
+    print("\nSINGLE FILES — one version each, so every method sees identical bytes")
+    header = (
+        f"{'file':<28}{'size':>7}{'strategy':>18}{'BitEngine':>11}{'BE+zstd':>10}"
+        f"{'gzip':>9}{'LZMA':>9}{'zstd':>9}{'enc':>9}{'dec':>9}{'ok':>4}"
+    )
+    print("  " + "-" * len(header))
+    print("  " + header)
+    print("  " + "-" * len(header))
+    for row in rows:
+        print(
+            "  "
+            + f"{row.label[-28:]:<28}{format_bytes(row.original):>7}{row.goal[:16]:>18}"
+            + f"{row.saving_pct:>10.2f}%{row.stacked_pct:>9.2f}%"
+            + f"{show(row.original, row.gzip_bytes):>9}{show(row.original, row.lzma_bytes):>9}"
+            + f"{show(row.original, row.zstd_bytes):>9}"
+            + f"{row.encode_mbs:>6.0f}MB/s{row.decode_mbs:>6.0f}MB/s{'yes' if row.verified else 'FAIL':>4}"
+        )
 
 
 def print_goal_matrix(rows: Sequence[Row]) -> None:
@@ -338,73 +470,145 @@ def print_goal_matrix(rows: Sequence[Row]) -> None:
         print("  " + f"{row.label[-28:]:<28}{cells}{row.goal[:18]:>20}")
 
 
-def print_insights(singles: Sequence[Row], pairs: Sequence[Row], skip_slow: bool) -> None:
+def print_insights(singles: Sequence[Row], pairs: Sequence[Row]) -> None:
     everything = [*singles, *pairs]
-    print("\n" + "=" * 96)
+    print("\n" + "=" * 100)
     print("EMPIRICAL INSIGHTS")
-    print("=" * 96)
+    print("=" * 100)
 
     failures = [r for r in everything if not r.verified]
     print(f"\n1. Fidelity. {len(everything) - len(failures)}/{len(everything)} rows round-tripped "
-          f"byte-for-byte under SHA-256.")
+          "byte-for-byte under SHA-256.")
     if failures:
         print("   FAILED: " + ", ".join(r.label for r in failures))
 
     if singles:
         best = max(singles, key=lambda r: r.saving_pct)
-        beaten = sum(1 for r in singles if pct(r.original, r.gzip_bytes) > r.saving_pct)
+        beaten = sum(1 for r in singles if r.gzip_bytes and pct(r.original, r.gzip_bytes) > r.saving_pct)
         print(f"\n2. A single real file yields almost nothing. Best {best.saving_pct:.2f}% "
               f"({os.path.basename(best.label)}).")
         print(f"   Plain gzip beats BitEngine on {beaten}/{len(singles)} single files.")
         print("   Expected: one file has no second version, so there is no delta to take.")
-        print("   This is the same result FINDINGS.md section 1 recorded for model weights.")
+        print("   Same result FINDINGS.md section 1 recorded for model weights.")
 
-    if pairs:
-        best = max(pairs, key=lambda r: r.saving_pct)
-        positive = sum(1 for r in pairs if r.saving_pct > 1.0)
-        print(f"\n3. Version pairs are where it works. Best {best.saving_pct:.2f}% ({best.label}), "
-              f"{positive}/{len(pairs)} pairs above 1%.")
-        if not skip_slow:
-            wins = sum(1 for r in pairs if r.saving_pct > pct(r.original, r.lzma_bytes))
-            print(f"   BitEngine beats large-dictionary LZMA on ratio in {wins}/{len(pairs)} pairs.")
-            if wins == 0:
-                print("   On ratio alone LZMA wins every pair. The advantage claimed for BitEngine")
-                print("   is throughput at comparable ratio, and that is the only claim supported.")
-        beats_gzip = sum(1 for r in pairs if r.saving_pct > pct(r.original, r.gzip_bytes))
-        print(f"   BitEngine alone beats plain gzip on {beats_gzip}/{len(pairs)} pairs.")
-        stacked_wins = sum(1 for r in pairs if r.stacked_pct > pct(r.original, r.gzip_bytes))
-        best_stacked = max(pairs, key=lambda r: r.stacked_pct)
-        print(f"\n4. BitEngine THEN gzip is the strongest configuration: better than gzip alone on")
-        print(f"   {stacked_wins}/{len(pairs)} pairs, best {best_stacked.stacked_pct:.2f}% ({best_stacked.label}).")
-        print("   They are complementary: the delta removes long-range duplication gzip's 32KB")
-        print("   window cannot reach, gzip entropy-codes the residual the delta leaves alone.")
-        if not skip_slow:
-            over_lzma = [r for r in pairs if r.stacked_pct > pct(r.original, r.lzma_bytes)]
-            print(f"   Against large-dictionary LZMA, the strongest baseline available here:")
-            print(f"   BitEngine+gzip wins {len(over_lzma)}/{len(pairs)} pairs.")
-            for r in sorted(pairs, key=lambda x: -x.stacked_pct)[:3]:
-                print(f"     {r.label:<20} {r.stacked_pct:>6.2f}%  vs LZMA {pct(r.original, r.lzma_bytes):>6.2f}%"
-                      f"  ({r.stacked_pct - pct(r.original, r.lzma_bytes):+.2f} pts)")
-            print("   Where it loses, the 'pair' was not a pair: those revisions added a whole new")
-            print("   directory, so most of the second file has no counterpart in the first.")
+    if pairs and zstandard is not None:
+        be_wins = [r for r in pairs if r.container < r.zstd_patch_bytes]
+        stacked_wins = [r for r in pairs if r.stacked_zstd_bytes < r.zstd_patch_bytes]
+        print(f"\n3. Against zstd --patch-from, the same-information opponent that matters:")
+        print(f"   BitEngine alone wins {len(be_wins)}/{len(pairs)} pairs.")
+        print(f"   BitEngine + zstd wins {len(stacked_wins)}/{len(pairs)} pairs.")
+        for row in sorted(pairs, key=lambda r: -r.stacked_pct)[:5]:
+            delta = row.stacked_pct - pct(row.original, row.zstd_patch_bytes)
+            print(f"     {row.label:<20} BE+zstd {row.stacked_pct:>6.2f}%  "
+                  f"zstd patch {pct(row.original, row.zstd_patch_bytes):>6.2f}%  ({delta:+.2f} pts)")
+        if not stacked_wins:
+            print("   zstd --patch-from wins every pair on ratio. That is the honest headline and")
+            print("   it removes the ratio claim entirely. What remains has to be argued on")
+            print("   something else, or not argued at all.")
 
-    if everything:
-        enc = sorted(r.encode_mbs for r in everything)
-        dec = sorted(r.decode_mbs for r in everything)
-        print(f"\n5. Throughput. Encode {enc[0]:.0f}-{enc[-1]:.0f} MB/s, "
-              f"decode {dec[0]:.0f}-{dec[-1]:.0f} MB/s, single-threaded pure Python.")
+        enc_ratio = [r.zstd_patch_encode_mbs / r.encode_mbs for r in pairs if r.encode_mbs]
+        dec_ratio = [r.zstd_patch_decode_mbs / r.decode_mbs for r in pairs if r.decode_mbs]
+        if enc_ratio and dec_ratio:
+            print(f"\n4. Throughput against the same opponent, both single-threaded:")
+            print(f"   zstd encodes {min(enc_ratio):.1f}-{max(enc_ratio):.1f}x faster than BitEngine.")
+            print(f"   zstd decodes {min(dec_ratio):.1f}-{max(dec_ratio):.1f}x faster than BitEngine.")
+            print("   BitEngine is pure Python against a tuned C library, so this is expected —")
+            print("   but it is measured, and it means there is no speed claim either, today.")
 
     divergent = [r for r in everything if r.change_pct is not None and r.change_pct > 1.0]
     if divergent:
-        print("\n6. Realized saving against raw divergence — the two are not the same number.")
+        print("\n5. Realised saving against raw divergence — the brief's formula overstates both.")
         for row in divergent[:4]:
             assert row.change_pct is not None
-            print(f"   {os.path.basename(row.label)[-34:]:<36} changed {row.change_pct:>6.2f}%  "
-                  f"-> saved {row.saving_pct:>6.2f}%  (the brief's formula would predict "
-                  f"{100 - row.change_pct:.2f}%)")
+            print(f"   {os.path.basename(row.label)[-30:]:<32} changed {row.change_pct:>6.2f}%  "
+                  f"-> saved {row.saving_pct:>6.2f}%  (formula predicts {100 - row.change_pct:.2f}%)")
 
-    print("\n7. Not measured: zstd --long, the production choice for this data shape.")
-    print("   No external ratio or speed claim should be made until it is.")
+    if zstandard is None:
+        print("\n6. zstd is NOT installed, so the comparison that matters did not run.")
+        print("   pip install zstandard, then re-run. Do not quote this report without it.")
+
+
+def head_to_head(reference: bytes, target: bytes, block_bytes: int = 65536) -> None:
+    """The decisive comparison: BitEngine against zstd --patch-from at every level.
+
+    Run separately from the main tables because it answers the only question a
+    technical reviewer will actually ask — is there any operating point where
+    this engine wins? Both methods get the same reference and must reconstruct
+    the same target.
+
+    The chunked row exists because "we support random access and zstd does not"
+    is the obvious last claim, and chunking zstd per block is the obvious
+    rebuttal. It is measured here rather than left for someone else to raise.
+    """
+    if zstandard is None:
+        print("\nzstd is not installed; the decisive comparison cannot run.")
+        return
+
+    print(f"\nHEAD TO HEAD — {len(target) / 1e6:.2f} MB target against a {len(reference) / 1e6:.2f} MB reference")
+    print(f"  {'method':<38}{'size':>11}{'saving':>9}{'encode':>11}{'decode':>11}{'random':>10}")
+    print("  " + "-" * 90)
+
+    for level in (1, 3, 9, 19):
+        dictionary = zstandard.ZstdCompressionDict(reference, dict_type=zstandard.DICT_TYPE_RAWCONTENT)
+        params = zstandard.ZstdCompressionParameters.from_level(
+            level, enable_ldm=True, window_log=ZSTD_WINDOW_LOG
+        )
+        compressor = zstandard.ZstdCompressor(dict_data=dictionary, compression_params=params)
+        started = time.perf_counter()
+        packed = compressor.compress(target)
+        encode_seconds = time.perf_counter() - started
+        decompressor = zstandard.ZstdDecompressor(dict_data=dictionary, max_window_size=1 << ZSTD_WINDOW_LOG)
+        started = time.perf_counter()
+        restored = decompressor.decompress(packed, max_output_size=len(target) * 2 + 1024)
+        decode_seconds = time.perf_counter() - started
+        if restored != target:
+            raise SystemExit("zstd patch-from did not round-trip")
+        megabytes = len(target) / 1e6
+        print(f"  {'zstd --patch-from -' + str(level):<38}{len(packed):>11,}{pct(len(target), len(packed)):>8.2f}%"
+              f"{megabytes / encode_seconds:>8.0f}MB/s{megabytes / decode_seconds:>8.0f}MB/s{'whole':>10}")
+
+    blocks = [target[i : i + block_bytes] for i in range(0, len(target), block_bytes)]
+    references = [reference[i : i + block_bytes] for i in range(0, len(reference), block_bytes)]
+    references += [b""] * (len(blocks) - len(references))
+
+    chunks: list[bytes] = []
+    started = time.perf_counter()
+    for block, reference_block in zip(blocks, references, strict=True):
+        dictionary = zstandard.ZstdCompressionDict(reference_block or b"\x00", dict_type=zstandard.DICT_TYPE_RAWCONTENT)
+        chunks.append(zstandard.ZstdCompressor(level=3, dict_data=dictionary).compress(block))
+    encode_seconds = time.perf_counter() - started
+    total = sum(len(c) for c in chunks)
+
+    probes = [len(blocks) - 1, len(blocks) // 2, min(3, len(blocks) - 1)]
+    latencies = []
+    for index in probes:
+        dictionary = zstandard.ZstdCompressionDict(references[index] or b"\x00", dict_type=zstandard.DICT_TYPE_RAWCONTENT)
+        started = time.perf_counter()
+        out = zstandard.ZstdDecompressor(dict_data=dictionary).decompress(chunks[index], max_output_size=block_bytes * 2)
+        latencies.append((time.perf_counter() - started) * 1000)
+        if out != blocks[index]:
+            raise SystemExit("chunked zstd did not round-trip")
+    megabytes = len(target) / 1e6
+    print(f"  {'chunked zstd --patch-from -3':<38}{total:>11,}{pct(len(target), total):>8.2f}%"
+          f"{megabytes / encode_seconds:>8.0f}MB/s{'-':>12}{sorted(latencies)[len(latencies) // 2]:>7.2f}ms")
+
+    goal = l2.goal_named("checkpoint-pair").with_block_bytes(block_bytes)
+    manifest, raw, encode_mbs, decode_mbs, verified = run_goal(target, goal, reference)
+    latencies = []
+    for index in probes:
+        reader = l3.Reader(io.BytesIO(raw), io.BytesIO(reference))
+        started = time.perf_counter()
+        block = reader.block(index)
+        latencies.append((time.perf_counter() - started) * 1000)
+        if block != blocks[index]:
+            raise SystemExit("BitEngine random access did not match")
+        reader.close()
+    print(f"  {'BitEngine container':<38}{len(raw):>11,}{pct(len(target), len(raw)):>8.2f}%"
+          f"{encode_mbs:>8.0f}MB/s{decode_mbs:>8.0f}MB/s{sorted(latencies)[len(latencies) // 2]:>7.2f}ms")
+    stacked = zstd_size(raw, ZSTD_HIGH, long_range=True)
+    print(f"  {'BitEngine + zstd':<38}{stacked:>11,}{pct(len(target), stacked):>8.2f}%"
+          f"{'-':>12}{'-':>12}{'-':>10}")
+    print(f"  verified: {'yes' if verified else 'FAIL'}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -421,6 +625,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--per-suffix", type=int, default=2)
     parser.add_argument("--skip-slow", action="store_true", help="drop the bzip2 and LZMA baselines")
     parser.add_argument("--no-goal-matrix", action="store_true", help="skip the every-goal comparison")
+    parser.add_argument("--head-to-head", action="store_true",
+                        help="BitEngine against zstd --patch-from at every level, on the newest git pair")
     args = parser.parse_args(argv)
 
     if args.all:
@@ -430,8 +636,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     paths = list(args.files)
     if args.scan:
         paths += discover(SCAN_ROOTS, SCAN_SUFFIXES, args.per_suffix, args.limit)
-    if not (paths or args.pair or args.git or args.project):
-        parser.error("nothing to do: pass --all, --project, --scan, --files, --pair or --git")
+    if not (paths or args.pair or args.git or args.project or args.head_to_head):
+        parser.error("nothing to do: pass --all, --project, --scan, --files, --pair, --git or --head-to-head")
 
     try_all = not args.no_goal_matrix
     singles: list[Row] = []
@@ -456,22 +662,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             base = handle.read(args.limit)
         with open(target_path, "rb") as handle:
             target = handle.read(args.limit)
-        label = f"{os.path.basename(base_path)}->{os.path.basename(target_path)}"
-        pairs.append(measure(label, target, base, args.sample_bytes, args.skip_slow, try_all))
+        pairs.append(
+            measure(
+                f"{os.path.basename(base_path)}->{os.path.basename(target_path)}",
+                target, base, args.sample_bytes, args.skip_slow, try_all,
+            )
+        )
 
     if args.git:
         with tempfile.TemporaryDirectory() as work:
             for label, base, target in git_pairs(args.repository, args.git, work):
                 pairs.append(measure(label, target, base, args.sample_bytes, args.skip_slow, try_all))
 
-    print("BitEngine on real files. Every row round-tripped and hash-checked.")
-    print_table(
-        "SINGLE FILES", "one version each, so there is nothing to delta against", singles, args.skip_slow
-    )
-    print_table("VERSION PAIRS", "two versions of one thing — the shape the engine is for", pairs, args.skip_slow)
+    if args.head_to_head:
+        with tempfile.TemporaryDirectory() as work:
+            newest = list(git_pairs(args.repository, 1, work))[-1]
+            head_to_head(newest[1], newest[2])
+        return 0
+
+    version = f"zstandard {zstandard.__version__}" if zstandard else "zstd NOT INSTALLED"
+    print(f"BitEngine on real files. Every row round-tripped and hash-checked. ({version})")
+    print_singles(singles)
+    print_pairs(pairs)
     if try_all:
         print_goal_matrix([*singles, *pairs])
-    print_insights(singles, pairs, args.skip_slow)
+    print_insights(singles, pairs)
 
     return 1 if any(not r.verified for r in (*singles, *pairs)) else 0
 

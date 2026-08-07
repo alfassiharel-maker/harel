@@ -1,0 +1,12 @@
+
+HEAD TO HEAD — 2.01 MB target against a 1.98 MB reference
+  method                                       size   saving     encode     decode    random
+  ------------------------------------------------------------------------------------------
+  zstd --patch-from -1                      616,963   69.26%     164MB/s     392MB/s     whole
+  zstd --patch-from -3                      257,507   87.17%     146MB/s     737MB/s     whole
+  zstd --patch-from -9                       21,229   98.94%      34MB/s    1551MB/s     whole
+  zstd --patch-from -19                      10,015   99.50%       4MB/s    3652MB/s     whole
+  chunked zstd --patch-from -3              279,393   86.08%     101MB/s           -   0.11ms
+  BitEngine container                     1,537,351   23.40%      33MB/s     203MB/s   0.29ms
+  BitEngine + zstd                          376,157   81.26%           -           -         -
+  verified: yes
