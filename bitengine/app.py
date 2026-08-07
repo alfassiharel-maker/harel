@@ -10,6 +10,13 @@ input's SHA-256, the page says so instead of showing a saving.
 
 This file is deliberately thin. All logic lives in `webui.py` so it can be
 tested without Streamlit installed — see `tests/test_webui.py`.
+
+Streamlit re-executes this whole script on every widget interaction, which
+shapes two things here. Results live in `st.session_state` rather than inside an
+`if st.button(...)` branch, because a branch like that evaluates false on the
+next run and the page would blank the moment the user pressed Download. And the
+two expensive calls — the probe and the pack — go through `st.cache_data`, so
+toggling a checkbox re-renders rather than re-encoding the upload.
 """
 
 from __future__ import annotations
@@ -36,6 +43,41 @@ BLOCK_SIZES = {
     "1 MB": 1048576,
 }
 
+# Errors that mean "your input was wrong", as opposed to a defect. These are
+# shown to the user as a message; anything else is left to propagate, because a
+# bug in the engine must not be rendered as though it were a bad upload.
+INPUT_ERRORS = (ValueError, KeyError, l3.ContainerError, l1.CorruptBlock)
+
+
+# ---------------------------------------------------------------------------
+# cached engine calls
+#
+# Keyed on the file bytes and the goal, both hashable, so the cache is exact
+# rather than approximate. `max_entries` is small because every entry holds a
+# whole upload and its container.
+# ---------------------------------------------------------------------------
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def cached_probe(
+    target: bytes, reference: bytes | None
+) -> tuple[l2.Goal | None, list[l2.GoalReport]]:
+    return webui.choose_goal(target, reference)
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def cached_pack(target: bytes, reference: bytes | None, goal: l2.Goal) -> webui.PackOutcome:
+    return webui.pack(target, reference, goal)
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def cached_unpack(container: bytes, reference: bytes | None) -> webui.UnpackOutcome:
+    return webui.unpack(container, reference)
+
+
+def upload_bytes(upload: object | None) -> bytes | None:
+    return None if upload is None else upload.getvalue()  # type: ignore[attr-defined]
+
 
 def block_map(blocks: list[webui.BlockRow]) -> None:
     """A strip of the container, one segment per run of same-codec blocks."""
@@ -43,10 +85,10 @@ def block_map(blocks: list[webui.BlockRow]) -> None:
     if not segments:
         return
     palette = webui.codec_palette()
-    total = sum(count for _, count in segments)
+    drawn = sum(count for _, count in segments)
     pieces = []
     for codec, count in segments:
-        width = count / total * 100
+        width = count / drawn * 100
         colour = palette.get(codec, "#718096")
         title = html.escape(f"{codec} x{count}")
         pieces.append(
@@ -62,8 +104,8 @@ def block_map(blocks: list[webui.BlockRow]) -> None:
         for name in sorted({codec for codec, _ in segments})
     )
     st.markdown(f'<div style="font-size:0.85em;opacity:.8">{legend}</div>', unsafe_allow_html=True)
-    if len(blocks) > sum(c for _, c in segments):
-        st.caption(f"Showing the first {sum(c for _, c in segments):,} of {len(blocks):,} blocks.")
+    if len(blocks) > drawn:
+        st.caption(f"Showing the first {drawn:,} of {len(blocks):,} blocks.")
 
 
 def show_pack_result(outcome: webui.PackOutcome, source_name: str) -> None:
@@ -86,14 +128,18 @@ def show_pack_result(outcome: webui.PackOutcome, source_name: str) -> None:
 
     if outcome.verified:
         st.success(f"Round trip verified — SHA-256 {outcome.manifest.sha256.hex()[:32]}…")
-
-    st.download_button(
-        "Download compressed file (.bite)",
-        data=outcome.container,
-        file_name=outcome.filename(source_name),
-        mime="application/octet-stream",
-        type="primary",
-    )
+        st.download_button(
+            "Download compressed file (.bite)",
+            data=outcome.container,
+            file_name=outcome.filename(source_name),
+            mime="application/octet-stream",
+            type="primary",
+        )
+    else:
+        # A container that did not survive its own round trip is not offered for
+        # download. Reporting the failure and still handing over the file would
+        # make the warning decorative.
+        st.info("The file is not offered for download because it did not verify.")
 
     st.divider()
     left, right = st.columns([2, 1])
@@ -158,7 +204,7 @@ def show_pack_result(outcome: webui.PackOutcome, source_name: str) -> None:
                     "decode": f"{baseline.decode_mbs:.0f} MB/s",
                 }
             )
-        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.dataframe(pd.DataFrame(rows), hide_index=True)
         best = min(outcome.baselines, key=lambda b: b.encoded_bytes)
         if best.encoded_bytes < outcome.container_bytes:
             st.warning(
@@ -223,15 +269,20 @@ with pack_tab:
         "Reference — the previous version (optional)", key="pack_reference"
     )
 
-    if target_upload is not None:
+    if target_upload is None:
+        # Dropping the file should drop the result with it, rather than leaving
+        # the previous run's numbers under a new upload's name.
+        st.session_state.pop("pack_for", None)
+    else:
         target = target_upload.getvalue()
-        reference = reference_upload.getvalue() if reference_upload is not None else None
+        reference = upload_bytes(reference_upload)
 
         try:
-            chosen, reports = (None, [])
+            chosen: l2.Goal | None = None
+            reports: list[l2.GoalReport] = []
             if auto_goal:
                 with st.spinner("Probing goals and block sizes on a sample…"):
-                    chosen, reports = webui.choose_goal(target, reference)
+                    chosen, reports = cached_probe(target, reference)
 
             options = webui.goal_choices(reference is not None)
             if not options:
@@ -276,7 +327,6 @@ with pack_tab:
                                 ]
                             ),
                             hide_index=True,
-                            width="stretch",
                         )
                     else:
                         st.info(
@@ -284,12 +334,29 @@ with pack_tab:
                             "so nothing could be measured. Pick a goal and block size by hand."
                         )
 
+            # The click is recorded rather than acted on inline: pressing
+            # Download re-runs the script, at which point the button reads false
+            # again and an inline result would disappear.
+            #
+            # The key covers every input the result depends on, so changing a
+            # file or a setting retires the old numbers instead of leaving them
+            # on screen describing a configuration that is no longer selected.
+            inputs = (
+                target_upload.file_id,
+                reference_upload.file_id if reference_upload is not None else None,
+                goal,
+            )
             if st.button("Pack", type="primary"):
-                with st.spinner("Encoding, then decoding it back to verify…"):
-                    outcome = webui.pack(target, reference, goal)
-                show_pack_result(outcome, target_upload.name)
+                st.session_state["pack_for"] = inputs
 
-        except (ValueError, KeyError, l3.ContainerError, l1.CorruptBlock) as exc:
+            if st.session_state.get("pack_for") == inputs:
+                with st.spinner("Encoding, then decoding it back to verify…"):
+                    outcome = cached_pack(target, reference, goal)
+                show_pack_result(outcome, target_upload.name)
+            elif st.session_state.get("pack_for") is not None:
+                st.caption("Settings changed since the last pack — press Pack to re-run them.")
+
+        except INPUT_ERRORS as exc:
             st.error(str(exc))
 
 
@@ -306,25 +373,30 @@ with unpack_tab:
     container_upload = left.file_uploader("Container (.bite)", key="unpack_container")
     unpack_reference = right.file_uploader("Reference (if one was used)", key="unpack_reference")
 
-    if container_upload is not None:
+    if container_upload is None:
+        st.session_state.pop("unpack_for", None)
+    else:
+        container = container_upload.getvalue()
+        reference = upload_bytes(unpack_reference)
         try:
-            preview = webui.inspect_container(
-                container_upload.getvalue(),
-                unpack_reference.getvalue() if unpack_reference is not None else None,
-            )
-            needs = preview.manifest.goal.needs_reference
-            if needs and unpack_reference is None:
+            preview = webui.inspect_container(container, reference)
+            if preview.manifest.goal.needs_reference and reference is None:
                 st.warning(
                     "This container was packed against a reference. Upload it above, or the "
                     "restore will fail."
                 )
 
+            inputs = (
+                container_upload.file_id,
+                unpack_reference.file_id if unpack_reference is not None else None,
+            )
             if st.button("Unpack", type="primary"):
+                st.session_state["unpack_for"] = inputs
+
+            if st.session_state.get("unpack_for") == inputs:
                 with st.spinner("Decoding and verifying…"):
-                    result = webui.unpack(
-                        container_upload.getvalue(),
-                        unpack_reference.getvalue() if unpack_reference is not None else None,
-                    )
+                    result = cached_unpack(container, reference)
+
                 columns = st.columns(3)
                 columns[0].metric("Restored", webui.format_bytes(result.restored_bytes))
                 columns[1].metric("Decode", f"{result.decode_mbs:.0f} MB/s")
@@ -332,10 +404,13 @@ with unpack_tab:
 
                 if result.verified:
                     st.success("SHA-256 matches the hash recorded when the container was written.")
+                    restored_name = container_upload.name
+                    if restored_name.endswith(".bite"):
+                        restored_name = restored_name[: -len(".bite")]
                     st.download_button(
                         "Download restored file",
                         data=result.data,
-                        file_name=container_upload.name.removesuffix(".bite") or "restored.bin",
+                        file_name=restored_name or "restored.bin",
                         mime="application/octet-stream",
                         type="primary",
                     )
@@ -345,7 +420,7 @@ with unpack_tab:
                         "corrupt or the wrong reference was supplied. The file is not offered."
                     )
 
-        except (ValueError, l3.ContainerError, l1.CorruptBlock) as exc:
+        except INPUT_ERRORS as exc:
             st.error(str(exc))
 
 
@@ -389,7 +464,7 @@ with inspect_tab:
                     "bound this."
                 )
 
-        except (ValueError, l3.ContainerError, l1.CorruptBlock) as exc:
+        except INPUT_ERRORS as exc:
             st.error(str(exc))
 
 st.divider()

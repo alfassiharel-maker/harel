@@ -295,16 +295,18 @@ class StreamlitApp(unittest.TestCase):
     browser. AppTest executes the script the way the server does.
     """
 
-    def test_app_script_runs_without_exceptions(self) -> None:
+    def _harness(self):  # type: ignore[no-untyped-def]
         try:
             from streamlit.testing.v1 import AppTest
         except ImportError:
             self.skipTest("streamlit not installed")
-
         app_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.py"
         )
-        harness = AppTest.from_file(app_path, default_timeout=120)
+        return AppTest.from_file(app_path, default_timeout=120)
+
+    def test_app_script_runs_without_exceptions(self) -> None:
+        harness = self._harness()
         harness.run()
 
         self.assertEqual(
@@ -312,3 +314,37 @@ class StreamlitApp(unittest.TestCase):
         )
         self.assertEqual([t.value for t in harness.title], ["BitEngine"])
         self.assertEqual(len(harness.tabs), 3, "expected Pack, Unpack and Inspect tabs")
+
+    def test_sidebar_controls_rerun_cleanly(self) -> None:
+        """Every sidebar widget triggers a full re-execution of the script.
+
+        The smoke test above only covers the first render with default values.
+        This drives the controls that change the goal that would be built, which
+        is the path a user takes before uploading anything.
+        """
+        harness = self._harness()
+        harness.run()
+
+        harness.toggle[0].set_value(False).run()  # probing off
+        harness.toggle[1].set_value(True).run()  # fast-decode on
+        harness.selectbox[0].set_value("16 KB").run()  # manual block size
+        harness.number_input[0].set_value(8).run()  # keyframes
+
+        self.assertEqual(
+            [e.value for e in harness.exception], [], "a sidebar change raised on rerun"
+        )
+        self.assertEqual(len(harness.tabs), 3)
+
+    def test_no_version_coupled_dataframe_width(self) -> None:
+        """`width="stretch"` is newer than the Streamlit floor in requirements.
+
+        It is also the default on the versions that accept it, so passing it
+        explicitly bought nothing and made the page fail on the oldest version
+        the bundle claims to support.
+        """
+        app_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.py"
+        )
+        with open(app_path, encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertNotIn('width="stretch"', source)

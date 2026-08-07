@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 import zipfile
 
@@ -21,17 +22,38 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bundle  # noqa: E402
 
 
+class SandboxedBuild:
+    """Point the bundler's output at a temporary directory.
+
+    `bundle.clean()` deletes `dist/` and `build/` outright. Run against the
+    module's defaults, the suite would delete whatever the developer had just
+    built — so the paths are redirected for the duration of the test and
+    restored afterwards.
+    """
+
+    def __enter__(self) -> SandboxedBuild:
+        self._directory = tempfile.TemporaryDirectory()
+        self._saved = (bundle.DIST, bundle.BUILD)
+        bundle.DIST = os.path.join(self._directory.name, "dist")
+        bundle.BUILD = os.path.join(self._directory.name, "build")
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        bundle.DIST, bundle.BUILD = self._saved
+        self._directory.cleanup()
+
+
 class Pyz(unittest.TestCase):
     """Builds the real archive once; the build is a few hundred milliseconds."""
 
     @classmethod
     def setUpClass(cls) -> None:
-        bundle.clean()
+        cls.sandbox = SandboxedBuild().__enter__()
         cls.archive = bundle.build_pyz()
 
     @classmethod
     def tearDownClass(cls) -> None:
-        bundle.clean()
+        cls.sandbox.__exit__()
 
     def test_archive_exists_and_is_small(self) -> None:
         self.assertTrue(os.path.exists(self.archive))
@@ -95,15 +117,34 @@ class Pyz(unittest.TestCase):
 
 class Ui(unittest.TestCase):
     def test_staging_includes_the_ui_and_its_requirements(self) -> None:
-        bundle.clean()
-        try:
+        with SandboxedBuild():
             directory = bundle.stage_ui()
             for name in ("app.py", "webui.py", "l1.py", "requirements.txt", "run-ui.sh", "run-ui.bat"):
                 self.assertTrue(os.path.exists(os.path.join(directory, name)), name)
             with open(os.path.join(directory, "requirements.txt"), encoding="utf-8") as handle:
                 self.assertIn("streamlit", handle.read())
+
+
+class DoesNotTouchTheRealDist(unittest.TestCase):
+    """The suite must not delete artefacts the developer just built.
+
+    This is a regression test for exactly that: `make bundle-bitengine` followed
+    by the test suite used to leave no `dist/` behind.
+    """
+
+    def test_build_outputs_survive_the_suite(self) -> None:
+        marker = os.path.join(bundle.DIST, "marker.txt")
+        os.makedirs(bundle.DIST, exist_ok=True)
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write("built by the developer")
+        try:
+            with SandboxedBuild():
+                bundle.build_pyz()
+                bundle.stage_ui()
+            self.assertTrue(os.path.exists(marker), "the suite deleted the real dist/")
         finally:
-            bundle.clean()
+            if os.path.exists(marker):
+                os.remove(marker)
 
 
 if __name__ == "__main__":
