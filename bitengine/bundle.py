@@ -97,7 +97,11 @@ def build_pyz(target_python: str = "/usr/bin/env python3") -> str:
     staging = os.path.join(BUILD, "cli")
     os.makedirs(staging, exist_ok=True)
     for name in CLI_MODULES:
-        shutil.copy2(os.path.join(HERE, name), os.path.join(staging, name))
+        src = os.path.join(HERE, name)
+        dst = os.path.join(staging, name)
+        if not os.path.exists(src):
+            raise FileNotFoundError(f"Source file not found: {src} (HERE={HERE})")
+        shutil.copy2(src, dst)
 
     # `cli.main` already returns an exit code, so the entry point only has to
     # hand it to the interpreter.
@@ -126,7 +130,11 @@ def stage_ui() -> str:
     ui_dir = os.path.join(DIST, "ui")
     os.makedirs(ui_dir, exist_ok=True)
     for name in UI_MODULES:
-        shutil.copy2(os.path.join(HERE, name), os.path.join(ui_dir, name))
+        src = os.path.join(HERE, name)
+        dst = os.path.join(ui_dir, name)
+        if not os.path.exists(src):
+            raise FileNotFoundError(f"Source file not found: {src} (HERE={HERE})")
+        shutil.copy2(src, dst)
     _write(os.path.join(ui_dir, "requirements.txt"), REQUIREMENTS)
     for name, body in UI_LAUNCHERS.items():
         _write(os.path.join(ui_dir, name), body, executable=name.endswith(".sh"))
