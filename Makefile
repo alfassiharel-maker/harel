@@ -32,6 +32,10 @@ test-bitengine: ## Run the BitEngine L1 block engine suite, zero deps (bitengine
 bench-bitengine: ## Regenerate the L1 throughput and savings table
 	cd bitengine && $(PY) bench_l1.py --size 16MB --block 64KB
 
+.PHONY: bench-bitengine-real
+bench-bitengine-real: ## Benchmark BitEngine against real local files and git version pairs
+	cd bitengine && $(PY) bench_real.py --project --git 5 --repository .. --limit 8388608 --no-goal-matrix
+
 # -----------------------------------------------------------------------------
 # Full environment (after architecture approval)
 # -----------------------------------------------------------------------------

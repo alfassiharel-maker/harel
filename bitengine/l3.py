@@ -96,6 +96,13 @@ class Manifest:
     index_offset: int
     container_bytes: int
 
+    # Set when the container was just written, `None` when it was read back. A
+    # container records what the blocks cost, not how many bytes differed, so a
+    # reader genuinely does not know these — and saying `None` is the honest
+    # answer rather than reconstructing a plausible zero.
+    block_savings: l1.Savings | None = None
+    codec_counts: dict[str, int] | None = None
+
     @property
     def saving_pct(self) -> float | None:
         """What the container saved against the original, or None if empty.
@@ -193,6 +200,8 @@ def write_container(
         sha256=digest.digest(),
         index_offset=index_offset,
         container_bytes=container_bytes,
+        block_savings=accumulator.result() if lengths else None,
+        codec_counts={l1.CODEC_NAMES[c]: n for c, n in sorted(accumulator.by_codec.items())},
     )
 
 

@@ -1,0 +1,57 @@
+BitEngine on real files. Every row round-tripped and hash-checked.
+
+SINGLE FILES
+  one version each, so there is nothing to delta against
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------
+  file                           size          strategy   blk   saved   +gzip  changed    gzip   bzip2    LZMA      enc      dec  ok  codecs
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------
+  roject source (concatenated)  1.7MB  video-frame-delt 4.0KB  -0.07%  69.81%   93.42%  70.75%  76.96%  77.51%    30MB/s   343MB/s yes  bitm:7 raw:440
+
+VERSION PAIRS
+  two versions of one thing — the shape the engine is for
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------
+  file                           size          strategy   blk   saved   +gzip  changed    gzip   bzip2    LZMA      enc      dec  ok  codecs
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------
+  4ed0f2d..19a114e              1.7MB   checkpoint-pair 4.0KB  78.93%  95.49%   19.89%  72.04%  78.31%  78.67%    33MB/s   299MB/s yes  bitm:1 iden:241 raw:77 runs:60 spar:54
+  19a114e..fcba153              1.7MB   checkpoint-pair 4.0KB  71.49%  93.03%   26.34%  72.06%  78.33%  78.68%    35MB/s   297MB/s yes  bitm:5 iden:220 raw:114 runs:42 spar:57
+  fcba153..21df2f8              1.7MB   checkpoint-pair 4.0KB  71.57%  93.24%   26.28%  72.10%  78.38%  78.70%    34MB/s   300MB/s yes  bitm:4 iden:222 raw:116 runs:98
+  21df2f8..3de4c8e              1.8MB   checkpoint-pair 4.0KB   2.01%  68.12%   91.64%  72.10%  78.52%  78.68%    30MB/s   198MB/s yes  bitm:22 iden:1 raw:404 runs:28
+  3de4c8e..e27416b              1.9MB   checkpoint-pair 4.0KB  24.11%  76.73%   71.65%  72.38%  78.42%  78.88%    30MB/s   258MB/s yes  bitm:6 iden:61 raw:345 runs:71
+
+================================================================================================
+EMPIRICAL INSIGHTS
+================================================================================================
+
+1. Fidelity. 6/6 rows round-tripped byte-for-byte under SHA-256.
+
+2. A single real file yields almost nothing. Best -0.07% (project source (concatenated)).
+   Plain gzip beats BitEngine on 1/1 single files.
+   Expected: one file has no second version, so there is no delta to take.
+   This is the same result FINDINGS.md section 1 recorded for model weights.
+
+3. Version pairs are where it works. Best 78.93% (4ed0f2d..19a114e), 5/5 pairs above 1%.
+   BitEngine beats large-dictionary LZMA on ratio in 1/5 pairs.
+   BitEngine alone beats plain gzip on 1/5 pairs.
+
+4. BitEngine THEN gzip is the strongest configuration: better than gzip alone on
+   4/5 pairs, best 95.49% (4ed0f2d..19a114e).
+   They are complementary: the delta removes long-range duplication gzip's 32KB
+   window cannot reach, gzip entropy-codes the residual the delta leaves alone.
+   Against large-dictionary LZMA, the strongest baseline available here:
+   BitEngine+gzip wins 3/5 pairs.
+     4ed0f2d..19a114e      95.49%  vs LZMA  78.67%  (+16.82 pts)
+     fcba153..21df2f8      93.24%  vs LZMA  78.70%  (+14.54 pts)
+     19a114e..fcba153      93.03%  vs LZMA  78.68%  (+14.35 pts)
+   Where it loses, the 'pair' was not a pair: those revisions added a whole new
+   directory, so most of the second file has no counterpart in the first.
+
+5. Throughput. Encode 30-35 MB/s, decode 198-343 MB/s, single-threaded pure Python.
+
+6. Realized saving against raw divergence — the two are not the same number.
+   project source (concatenated)        changed  93.42%  -> saved  -0.07%  (the brief's formula would predict 6.58%)
+   4ed0f2d..19a114e                     changed  19.89%  -> saved  78.93%  (the brief's formula would predict 80.11%)
+   19a114e..fcba153                     changed  26.34%  -> saved  71.49%  (the brief's formula would predict 73.66%)
+   fcba153..21df2f8                     changed  26.28%  -> saved  71.57%  (the brief's formula would predict 73.72%)
+
+7. Not measured: zstd --long, the production choice for this data shape.
+   No external ratio or speed claim should be made until it is.

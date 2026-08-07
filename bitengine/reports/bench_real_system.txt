@@ -1,0 +1,39 @@
+BitEngine on real files. Every row round-tripped and hash-checked.
+
+SINGLE FILES
+  one version each, so there is nothing to delta against
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------
+  file                           size          strategy   blk   saved   +gzip  changed    gzip   bzip2    LZMA      enc      dec  ok  codecs
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------
+  b/bfd-plugins/LLVMgold-18.so 83.7KB      anchor-dedup 4.0KB  12.29%  52.79%   76.98%  59.66%  60.62%  67.58%    25MB/s    38MB/s yes  bitm:10 raw:11
+  bfd-plugins/liblto_plugin.so 66.7KB      anchor-dedup 8.0KB  17.91%  44.85%   70.45%  54.25%  54.98%  60.10%    26MB/s    22MB/s yes  bitm:6 raw:3
+  balloc-c99e676976f4dcce.rlib767.6KB  video-frame-delt 4.0KB  19.50%  62.10%   74.39%  67.97%  70.07%  76.78%    16MB/s    32MB/s yes  bitm:68 iden:5 raw:118 runs:1
+  ibcore-e60dd2ab51fbc7de.rlib  2.8MB  video-frame-delt 4.0KB  16.07%  61.98%   77.78%  67.04%  67.86%  76.45%     4MB/s    16MB/s yes  bitm:244 iden:17 raw:450 runs:1 spar:1
+  /gallery/sounds/applause.wav 88.4KB  video-frame-delt32.0KB  -0.13%   5.91%   98.84%   6.03%   4.95%   8.42%    28MB/s   693MB/s yes  raw:3
+  are/gallery/sounds/beam2.wav 71.7KB  video-frame-delt32.0KB   6.23%  28.91%   81.11%  48.42%  59.95%  55.84%     5MB/s     9MB/s yes  bitm:3
+  ce/program/intro-highres.png120.5KB  video-frame-delt32.0KB  -0.10%   0.81%   99.65%   0.89%   0.33%   0.36%    18MB/s   815MB/s yes  raw:4
+  ibreoffice/program/intro.png 81.5KB  video-frame-delt32.0KB  -0.14%   0.50%   99.62%   0.62%  -0.07%   0.01%    26MB/s   781MB/s yes  raw:3
+  86_64-linux-gnu/13/libasan.a  2.9MB  video-frame-delt 4.0KB   7.20%  64.12%   82.97%  77.22%  80.82%  85.48%    25MB/s    30MB/s yes  bitm:392 raw:357 runs:4
+  _64-linux-gnu/13/libatomic.a136.2KB  video-frame-delt64.0KB  40.21%  73.38%   47.20%  90.04%  92.15%  93.63%    29MB/s    20MB/s yes  bitm:3
+
+================================================================================================
+EMPIRICAL INSIGHTS
+================================================================================================
+
+1. Fidelity. 10/10 rows round-tripped byte-for-byte under SHA-256.
+
+2. A single real file yields almost nothing. Best 40.21% (libatomic.a).
+   Plain gzip beats BitEngine on 10/10 single files.
+   Expected: one file has no second version, so there is no delta to take.
+   This is the same result FINDINGS.md section 1 recorded for model weights.
+
+5. Throughput. Encode 4-29 MB/s, decode 9-815 MB/s, single-threaded pure Python.
+
+6. Realized saving against raw divergence — the two are not the same number.
+   LLVMgold-18.so                       changed  76.98%  -> saved  12.29%  (the brief's formula would predict 23.02%)
+   liblto_plugin.so                     changed  70.45%  -> saved  17.91%  (the brief's formula would predict 29.55%)
+   liballoc-c99e676976f4dcce.rlib       changed  74.39%  -> saved  19.50%  (the brief's formula would predict 25.61%)
+   libcore-e60dd2ab51fbc7de.rlib        changed  77.78%  -> saved  16.07%  (the brief's formula would predict 22.22%)
+
+7. Not measured: zstd --long, the production choice for this data shape.
+   No external ratio or speed claim should be made until it is.
