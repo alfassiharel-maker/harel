@@ -6,17 +6,22 @@ reference block.
 
 ```bash
 cd bitengine
+streamlit run app.py                       # the dashboard (needs streamlit)
+python3 bundle.py --with-ui                # -> dist/bitengine.pyz, one file, ~77 KB
 python3 cli.py goals                       # what the engine knows how to do
 python3 cli.py probe  video.bin            # measure candidate goals, rank them
 python3 cli.py pack   video.bin out.bite   # --auto by default
 python3 cli.py unpack out.bite restored.bin
 python3 cli.py inspect out.bite
 
-python3 -m unittest discover -s tests -t .  # 148 tests
+python3 -m unittest discover -s tests -t .  # 202 tests
 python3 bench_l1.py --size 16MB --block 64KB
 ```
 
-Standard library only. Nothing here imports from the rest of this repository.
+The engine (`l1`, `l2`, `l3`) and the CLI use the **standard library only** and
+import nothing from the rest of this repository — that is what lets the bundled
+`.pyz` run anywhere with no install. The dashboard needs `streamlit` and
+`pandas`, and `zstandard` is optional; see [INSTALL.md](INSTALL.md).
 
 ## The three tiers
 
@@ -25,7 +30,10 @@ Standard library only. Nothing here imports from the rest of this repository.
 | **L1** | `l1.py` | Given this base and this block, what is the cheapest representation? |
 | **L2** | `l2.py` | Which base, which block size, which codecs? |
 | **L3** | `l3.py` | Where does it live, and how is block *i* served without replaying the rest? |
-| — | `cli.py` | The user-facing surface. |
+| — | `cli.py` | Command line: goals, probe, pack, unpack, inspect. |
+| — | `webui.py` | Dashboard logic — real engine calls, no framework, fully tested. |
+| — | `app.py` | Thin Streamlit layer over `webui.py`. |
+| — | `bundle.py` | Packaging. See [INSTALL.md](INSTALL.md). |
 
 ### L1 — five codecs, not one delta format
 

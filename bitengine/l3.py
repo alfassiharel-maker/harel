@@ -467,6 +467,25 @@ class Reader:
             digest.update(block)
         return digest.digest() == self._manifest.sha256
 
+    def block_table(self) -> list[tuple[int, int, int, int]]:
+        """Per block: index, codec id, stored payload bytes, reconstructed bytes.
+
+        Reads one tag byte per block and decodes nothing, so a breakdown can be
+        drawn for a container far too large to decode. This is what makes the
+        per-block view in the UI honest — it reports what is actually on disk
+        rather than a model of it.
+        """
+        table: list[tuple[int, int, int, int]] = []
+        for index in range(self._manifest.block_count):
+            self._file.seek(self._offsets[index])
+            tag = self._file.read(1)
+            if not tag:
+                raise ContainerError(f"block {index} is truncated on disk")
+            if tag[0] not in l1.CODEC_NAMES:
+                raise ContainerError(f"block {index} has unknown codec id {tag[0]}")
+            table.append((index, tag[0], self._lengths[index], self.block_length(index)))
+        return table
+
     def codec_histogram(self) -> dict[str, int]:
         """Codec of every stored block, read from the payload tags alone.
 

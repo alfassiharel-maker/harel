@@ -1,0 +1,11 @@
+# Build outputs. Rebuilt by `python3 bundle.py`; never committed, because a
+# binary in git is a supply-chain question nobody wants to answer later.
+dist/
+build/
+*.spec
+
+# Scratch containers produced while trying things out.
+*.bite
+
+__pycache__/
+*.py[cod]

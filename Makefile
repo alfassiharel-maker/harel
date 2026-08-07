@@ -36,6 +36,14 @@ bench-bitengine: ## Regenerate the L1 throughput and savings table
 bench-bitengine-real: ## Benchmark BitEngine against real local files and git version pairs
 	cd bitengine && $(PY) bench_real.py --project --git 5 --repository .. --limit 8388608 --no-goal-matrix
 
+.PHONY: ui-bitengine
+ui-bitengine: ## Run the BitEngine dashboard (needs streamlit)
+	cd bitengine && $(PY) -m streamlit run app.py
+
+.PHONY: bundle-bitengine
+bundle-bitengine: ## Build dist/bitengine.pyz and stage the dashboard
+	cd bitengine && $(PY) bundle.py --with-ui
+
 # -----------------------------------------------------------------------------
 # Full environment (after architecture approval)
 # -----------------------------------------------------------------------------
