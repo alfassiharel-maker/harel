@@ -26,12 +26,25 @@ import html
 import pandas as pd
 import streamlit as st
 
-import l1
-import l2
-import l3
-import webui
-
 st.set_page_config(page_title="BitEngine", page_icon="◧", layout="wide")
+
+try:
+    import l1
+    import l2
+    import l3
+    import webui
+except RuntimeError as exc:
+    # l3 and webui refuse to import against a mixed set of engine modules. The
+    # cause is a file-copying mistake rather than anything in the code, so the
+    # message is worth more than the traceback Streamlit would otherwise show.
+    # Only RuntimeError is caught — a genuine defect should still surface whole.
+    st.title("BitEngine")
+    st.error(str(exc))
+    st.caption(
+        "This check exists because a mixed set does not only raise — it can encode a "
+        "container no other build will decode."
+    )
+    st.stop()
 
 BLOCK_SIZES = {
     "4 KB": 4096,

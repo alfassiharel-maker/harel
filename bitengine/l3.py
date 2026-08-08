@@ -49,6 +49,7 @@ import l1
 import l2
 
 __all__ = [
+    "ENGINE_VERSION",
     "MAGIC",
     "VERSION",
     "MAX_CHAIN_WALK",
@@ -58,6 +59,46 @@ __all__ = [
     "Reader",
     "read_container",
 ]
+
+# Its own literal — see the note in l2.py. Distinct from `VERSION` below, which
+# is the on-disk container format: a `.bite` file written last year must still
+# open, so that number moves only when the byte layout does.
+ENGINE_VERSION = "1.1"
+
+
+class EngineMismatch(RuntimeError):
+    """`l1`, `l2` and `l3` on this machine are not one consistent set."""
+
+
+def check_engine_modules() -> None:
+    """Refuse to import against a mixed set of engine modules.
+
+    Copying one of these files onto a machine and leaving the others is the most
+    likely way this project breaks in the field, and it stays invisible until
+    something well below the call site raises about a keyword argument it never
+    named. L3 is where the check goes because it is the only tier that imports
+    the other two, so every entry point — the CLI and the dashboard alike —
+    inherits it without either having to remember to ask.
+
+    The worst outcome this prevents is not the exception. It is a mixed set
+    encoding a container that no other build can decode.
+    """
+    found = {module.__name__: getattr(module, "ENGINE_VERSION", None) for module in (l1, l2)}
+    found["l3"] = ENGINE_VERSION
+    stale = {name: value for name, value in found.items() if value != ENGINE_VERSION}
+    if stale:
+        detail = ", ".join(
+            f"{name}.py is {value or 'from before version markers existed'}"
+            for name, value in sorted(stale.items())
+        )
+        raise EngineMismatch(
+            f"the engine modules do not match: {detail}, but this build is {ENGINE_VERSION} "
+            f"throughout. l1.py, l2.py and l3.py are one unit and must be copied together — "
+            f"or run `python3 bundle.py`, which packages them in one step."
+        )
+
+
+check_engine_modules()
 
 MAGIC = b"BITE"
 VERSION = 1

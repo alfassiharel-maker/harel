@@ -19,6 +19,7 @@ both.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import io
 import time
@@ -35,6 +36,9 @@ except ImportError:  # pragma: no cover - depends on the deployment
     zstandard = None  # type: ignore[assignment]
 
 __all__ = [
+    "ENGINE_VERSION",
+    "EngineMismatch",
+    "check_engine_modules",
     "MAX_UPLOAD_BYTES",
     "PROBE_SAMPLE_BYTES",
     "BlockRow",
@@ -52,6 +56,51 @@ __all__ = [
     "format_bytes",
     "format_pct",
 ]
+
+ENGINE_VERSION = "1.1"
+
+# Fields on `l2.Goal` that this module sets by name. `build_goal` passes these
+# to `Goal.replace`, and a copy of l2.py predating any of them turns that into a
+# TypeError raised inside `dataclasses`, several frames below anything that
+# names the real problem.
+_REQUIRED_GOAL_FIELDS = frozenset(
+    {"name", "summary", "block_bytes", "base", "codecs", "stride_blocks", "keyframe_interval"}
+)
+
+
+# Importing l3 has already asserted that l1, l2 and l3 carry the same version
+# marker, so this module inherits that and only has to check what it uniquely
+# depends on. Re-exported so `app.py` can name the type it catches.
+EngineMismatch = l3.EngineMismatch
+
+
+def check_engine_modules() -> None:
+    """Check what the dashboard needs on top of L3's version check.
+
+    A matching version marker is necessary and not sufficient: someone can
+    change a `Goal` field without bumping it. `build_goal` sets these fields by
+    name, and against an older l2.py that becomes a `TypeError` raised inside
+    `dataclasses`, several frames below anything that names the real problem.
+    """
+    if getattr(l3, "ENGINE_VERSION", None) != ENGINE_VERSION:
+        raise EngineMismatch(
+            f"the engine is {getattr(l3, 'ENGINE_VERSION', 'unversioned')} but this dashboard "
+            f"is {ENGINE_VERSION}. Copy l1.py, l2.py, l3.py, webui.py and app.py together, or "
+            f"run `python3 bundle.py --with-ui` and use dist/ui/, which stages all five."
+        )
+
+    present = {field.name for field in dataclasses.fields(l2.Goal)}
+    missing = _REQUIRED_GOAL_FIELDS - present
+    if missing:
+        raise EngineMismatch(
+            f"l2.Goal is missing {sorted(missing)}, which this dashboard sets. The copy of "
+            f"l2.py being imported is not the one this version was written against — check "
+            f"for an older l2.py earlier on sys.path."
+        )
+
+
+check_engine_modules()
+
 
 # A browser upload is held in memory twice over (the upload buffer and the
 # decoded copy), so this caps what a single request can cost. It is a guard

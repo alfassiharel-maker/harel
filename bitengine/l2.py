@@ -59,6 +59,7 @@ from typing import BinaryIO
 import l1
 
 __all__ = [
+    "ENGINE_VERSION",
     "MAX_BLOCKS",
     "MAX_WINDOW_BYTES",
     "PAIRED",
@@ -80,6 +81,11 @@ __all__ = [
     "probe",
 ]
 
+
+# Its own literal, not `l1.ENGINE_VERSION`. The point of the marker is to detect
+# a stale copy of *this* file, and re-exporting L1's value would make a stale
+# L2 report whatever version happened to sit next to it.
+ENGINE_VERSION = "1.1"
 
 # A backstop, not an operating limit: 16M blocks is 1TB at 64KB. It exists so a
 # malformed or endless source cannot make the driver loop forever.

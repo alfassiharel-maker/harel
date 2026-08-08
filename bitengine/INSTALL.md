@@ -11,7 +11,7 @@ cd bitengine
 python3 cli.py goals
 python3 cli.py pack v2.bin out.bite --reference v1.bin
 python3 cli.py unpack out.bite restored.bin
-python3 -m unittest discover -s tests -t .     # 202 tests
+python3 -m unittest discover -s tests -t .     # 216 tests
 ```
 
 ## 2. Bundled — one file, still needs Python
@@ -75,6 +75,33 @@ measured inputs it produces a smaller file than BitEngine does. The panel is
 shown rather than hidden because the alternative is a dashboard that contradicts
 the project's own benchmarks.
 
+## Do not copy the files one at a time
+
+`l1.py`, `l2.py` and `l3.py` are one unit, and the dashboard adds `webui.py` and
+`app.py` to that set. Copying some of them to a machine and leaving the rest
+produces a mixture that fails well below the call site — the reported symptom
+was
+
+```
+TypeError: Goal.__init__() got an unexpected keyword argument 'keyframe_interval'
+```
+
+raised inside `dataclasses`, from an `l2.py` older than the `webui.py` importing
+it. `l3.py` now refuses to import against a mismatched set and says which file
+is stale, so this fails immediately and legibly instead. The CLI and the
+dashboard both inherit that check.
+
+The reliable fix is to stop copying by hand:
+
+```bash
+python3 bundle.py --with-ui     # dist/bitengine.pyz + dist/ui/, both consistent by construction
+```
+
+`dist/ui/` contains all five files staged together. Copy that whole directory,
+not files out of it. On Windows, copy the directory to somewhere like
+`C:\bitengine\` and run `run-ui.bat` from inside it — running loose files out of
+`C:\Users\User\` is what lets old copies linger and get imported.
+
 ## Platform notes
 
 | | Python needed | Command |
@@ -90,7 +117,7 @@ engine, the CLI or the bundler.
 
 ```bash
 python3 dist/bitengine.pyz goals                       # lists five goals
-python3 -m unittest discover -s tests -t .             # 202 tests
+python3 -m unittest discover -s tests -t .             # 216 tests
 python3 bench_l1.py --size 16MB --block 64KB           # every row hash-checked
 python3 bench_real.py --head-to-head --repository ..   # BitEngine vs zstd
 ```

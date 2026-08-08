@@ -54,6 +54,7 @@ import re
 from dataclasses import dataclass
 
 __all__ = [
+    "ENGINE_VERSION",
     "MAX_BLOCK_BYTES",
     "CODEC_IDENTICAL",
     "CODEC_SPARSE",
@@ -77,6 +78,13 @@ __all__ = [
     "savings",
 ]
 
+
+# Bumped when the shape of anything crossing a module boundary changes — a Goal
+# field, a container field, a function signature another tier calls. `l1`, `l2`
+# and `l3` are one unit and are only ever correct at the same value; copying one
+# of them onto an older machine and leaving the others is the failure this
+# catches. See `check_engine_modules` in webui.py.
+ENGINE_VERSION = "1.1"
 
 # 4 MiB. Chosen as a hard ceiling rather than an operating point: the streaming
 # tiers work at 4-64 KiB, and this exists so that a malformed length can never

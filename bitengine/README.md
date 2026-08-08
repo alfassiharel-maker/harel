@@ -14,7 +14,7 @@ python3 cli.py pack   video.bin out.bite   # --auto by default
 python3 cli.py unpack out.bite restored.bin
 python3 cli.py inspect out.bite
 
-python3 -m unittest discover -s tests -t .  # 202 tests
+python3 -m unittest discover -s tests -t .  # 216 tests
 python3 bench_l1.py --size 16MB --block 64KB
 ```
 
