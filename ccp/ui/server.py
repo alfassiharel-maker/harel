@@ -51,10 +51,12 @@ class AppServer:
     def __init__(
         self,
         controller: Optional[AppController] = None,
+        commerce_controller = None,
         host: str = "127.0.0.1",
         port: int = 0,
     ) -> None:
         self.controller = controller or AppController()
+        self.commerce_controller = commerce_controller
         self.token = secrets.token_urlsafe(24)
         self._upload_dir = tempfile.TemporaryDirectory(prefix="ccp-upload-")
         handler = _make_handler(self)
@@ -313,6 +315,103 @@ def _clear_error(handler, app: AppServer, query) -> Tuple[int, dict]:
     return 200, {"cleared": True}
 
 
+def _commerce_state(handler, app: AppServer, query) -> Tuple[int, dict]:
+    """Get customer's commercial state (balance, credits, charges, agreement)."""
+    if not hasattr(app, "commerce_controller") or not app.commerce_controller:
+        return 200, {
+            "enabled": False,
+            "message": "commercial features not enabled",
+        }
+
+    state = app.commerce_controller.get_commercial_state()
+    return 200, {
+        "enabled": True,
+        "customer_id": str(state.customer_id) if state.customer_id else None,
+        "customer_name": state.customer_name,
+        "agreement_id": str(state.agreement_id) if state.agreement_id else None,
+        "contract_version": state.contract_version,
+        "terms_accepted": state.terms_accepted,
+        "terms_accepted_at": state.terms_accepted_at,
+        "account_balance": str(state.account_balance),
+        "total_credits": str(state.total_credits),
+        "total_charges": str(state.total_charges),
+    }
+
+
+def _accept_terms(handler, app: AppServer, query) -> Tuple[int, dict]:
+    """Accept commercial terms."""
+    if not hasattr(app, "commerce_controller") or not app.commerce_controller:
+        raise ValueError("commercial features not enabled")
+
+    payload = handler._payload()
+    terms_version = int(payload.get("terms_version", 1))
+    state = app.commerce_controller.accept_terms(terms_version)
+
+    return 200, {
+        "accepted": state.terms_accepted,
+        "terms_version": state.contract_version,
+        "accepted_at": state.terms_accepted_at,
+    }
+
+
+def _measurements(handler, app: AppServer, query) -> Tuple[int, dict]:
+    """Get customer's measurement history."""
+    if not hasattr(app, "commerce_controller") or not app.commerce_controller:
+        return 200, {"measurements": []}
+
+    measurements = app.commerce_controller.get_customer_measurements()
+    return 200, {
+        "measurements": [
+            {
+                "measurement_id": str(m.measurement_id),
+                "artifact_digest": m.artifact_digest,
+                "baseline_bytes": m.baseline_bytes,
+                "ccp_bytes": m.ccp_bytes,
+                "result_type": m.result_type,
+                "calculated_credit": str(m.calculated_credit),
+                "calculated_charge": str(m.calculated_charge),
+                "status": m.status,
+            }
+            for m in measurements
+        ]
+    }
+
+
+def _dashboard(handler, app: AppServer, query) -> Tuple[int, dict]:
+    """Get dashboard summary (agreement, size, savings, balance)."""
+    if not hasattr(app, "commerce_controller") or not app.commerce_controller:
+        return 200, {
+            "enabled": False,
+            "message": "commercial features not enabled",
+        }
+
+    state = app.commerce_controller.get_commercial_state()
+    artifact_summary = app.controller.artifact_summary if app.controller.artifact_summary else None
+
+    return 200, {
+        "enabled": True,
+        "customer_name": state.customer_name,
+        "terms_accepted": state.terms_accepted,
+        "account_balance": str(state.account_balance),
+        "total_credits": str(state.total_credits),
+        "total_charges": str(state.total_charges),
+        "baseline_bytes": artifact_summary.original_bytes if artifact_summary else 0,
+        "ccp_bytes": artifact_summary.artifact_bytes if artifact_summary else 0,
+        "saving_ratio": artifact_summary.saving if artifact_summary else None,
+        "verified": artifact_summary.verified if artifact_summary else False,
+    }
+
+
+def _support(handler, app: AppServer, query) -> Tuple[int, dict]:
+    """Get support information."""
+    return 200, {
+        "support_email": "support@example.com",
+        "documentation_url": "https://docs.example.com/ccp-forge",
+        "version": "1.0.0",
+        "commercial_enabled": hasattr(app, "commerce_controller") and app.commerce_controller is not None,
+    }
+
+
 def _upload(handler, app: AppServer, query) -> Tuple[int, dict]:
     """Receive a dropped archive into this process's temporary directory.
 
@@ -341,6 +440,10 @@ _GET_ROUTES: Dict[str, Callable] = {
     "/api/units": _units,
     "/api/groups": _groups,
     "/api/unit": _unit,
+    "/api/commerce/state": _commerce_state,
+    "/api/commerce/measurements": _measurements,
+    "/api/commerce/dashboard": _dashboard,
+    "/api/support": _support,
 }
 
 _POST_ROUTES: Dict[str, Callable] = {
@@ -356,4 +459,5 @@ _POST_ROUTES: Dict[str, Callable] = {
     "/api/export": _export,
     "/api/upload": _upload,
     "/api/error/clear": _clear_error,
+    "/api/commerce/accept-terms": _accept_terms,
 }
