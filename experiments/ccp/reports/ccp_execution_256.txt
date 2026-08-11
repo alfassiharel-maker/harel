@@ -1,0 +1,44 @@
+CCP EXECUTION EXPERIMENT
+========================================================================
+operator A: 256 x 256 int8-range   reuse (inputs/base): 64
+substrate: pure-Python scalar multiply-add   timing: best-of-5
+hypothesis: y_i = y0 + A*delta_i executes for less than y_i = A*x_i,
+            bit-exactly, when the delta is sparse.
+
+SPARSITY SWEEP
+------------------------------------------------------------------------
+    k/n     k     ops full      ops ccp   ops x  time x  ok    verdict
+  0.004     1      4194304        81920  51.20x  43.92x   Y  SUPPORTED
+  0.012     3      4194304       114688  36.57x  27.69x   Y  SUPPORTED
+  0.020     5      4194304       147456  28.44x  21.24x   Y  SUPPORTED
+  0.051    13      4194304       278528  15.06x   9.45x   Y  SUPPORTED
+  0.102    26      4194304       491520   8.53x   5.08x   Y  SUPPORTED
+  0.199    51      4194304       901120   4.65x   2.80x   Y  SUPPORTED
+  0.500   128      4194304      2162688   1.94x   1.09x   Y  SUPPORTED
+
+  ops x / time x are CCP speedups (full / ccp); >1 means CCP did less.
+
+FALSIFICATION CONTROLS
+------------------------------------------------------------------------
+  control:dense_delta    verdict=NO SAVING
+      CCP did at least as much work as full recomputation
+      ops full=4194304 ccp=4259840 (  0.98x)  time   0.56x  correct=True
+  control:no_reuse       verdict=NO SAVING
+      CCP did at least as much work as full recomputation
+      ops full=65536 ccp=66304 (  0.99x)  time   0.97x  correct=True
+  control:nonlinear      verdict=IDENTITY BROKEN
+      base+delta != full recompute once a nonlinearity is applied; the exact contract holds only for the linear operator
+      ops full=4194304 ccp=114688 ( 36.57x)  time  20.20x  correct=False
+
+VERDICT
+------------------------------------------------------------------------
+HYPOTHESIS SUPPORTED in a band: bit-exact, fewer ops, and lower wall-clock for sparsity in [0.004, 0.500].
+  The op-count reduction is arithmetic and exact; the wall-clock win is the load-bearing part and it is present here on equal substrate.
+
+Bounds established by the controls, all measured:
+  - dense delta: CCP loses (no exploitable sparsity) — as it must.
+  - single input / no reuse: CCP loses (base matvec unamortised).
+  - nonlinearity: the exact base+delta identity BREAKS. The contract
+    'output == full recompute' holds only for the linear operator. Any
+    real pipeline's nonlinear stages need recompute or approximation,
+    which this experiment does not attempt.

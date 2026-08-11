@@ -19,8 +19,12 @@ not a formula.
 | `ccp_benchmark.py` | Runs the engine over many datasets and puts it beside gzip, bzip2 and LZMA. Measures peak RSS from the kernel. |
 | `ccp_layer_analysis.py` | Per-tensor analysis of a `.safetensors` model, plus a reversible byte-plane reordering as a control transform. |
 | `ccp_checkpoint_experiment.py` | Two versions of one model stored together — the case a delta scheme is actually for. |
+| `ccp_execution_experiment.py` | The **execution** experiment (Track B): does base+delta cut *execution* cost, not just storage? Incremental `y = y0 + A·Δ` vs full recompute, measured in operations and time, bit-exact, with dense/no-reuse/nonlinear controls. |
 | `tests/test_ccp.py` | Anchor cases, undefined cases, hand-computed cost values, round-trip and determinism checks. |
-| `FINDINGS.md` | What the experiment actually measured and what it means. **Read this first.** |
+| `tests/test_ccp_execution.py` | Execution experiment: identity anchor, degenerate empty delta, hand-computed op counts, controls. |
+| `FINDINGS.md` | What the **storage** experiment measured and what it means. **Read this first.** |
+| `FINDINGS_EXECUTION.md` | What the **execution** experiment measured: the hypothesis is supported for the linear case on equal substrate, and bounded hard beyond it. |
+| `PHASE1_UNDERSTANDING.md` | The pre-implementation understanding doc: principle vs algorithm vs core vs product, the seven architecture layers, and the DEFINED / PROPOSED / OPEN register. |
 
 Only the standard library is needed. `ccp_datasets.py` and the engine have no
 third-party imports at all.
