@@ -5,16 +5,19 @@ everything else is stored as a **change program** against it. Executing that
 program reconstructs the unit. Reading it — without executing it — is what lets
 work happen over the representation instead of over the bytes.
 
-`docs/00-core-spec.md` is the specification of what is implemented here, with
-every element classified as defined-by-user, engineering decision, or open
-question. Read it before changing the Core.
+`docs/00-core-spec.md` specifies the Core; `docs/01-runtime.md` specifies the
+Runtime and the semantic contract it enforces. Every element is classified as
+defined-by-user, engineering decision, or open question. Read them before
+changing either layer.
 
 ## Status
 
 ```
 ccp.core          the algorithm and its representation      IMPLEMENTED
 ccp.capabilities  work performed on the representation      IMPLEMENTED
-ccp.runtime       execution strategy under a contract       NOT BUILT
+ccp.runtime       loading, integrity, selective access,     IMPLEMENTED
+                  work accounting, under a stated contract
+ccp.api           the stable public interface               IMPLEMENTED
 ccp.integration   project import, language analysis         NOT BUILT
 ccp.product       build orchestration, packaging            NOT BUILT
 ccp.ui            the commercial surface                    NOT BUILT
@@ -22,16 +25,19 @@ ccp.ui            the commercial surface                    NOT BUILT
 
 Layers that are not built are absent from the tree rather than stubbed, so the
 package cannot be mistaken for a working system with unfinished parts. `ccp.core`
-imports only the standard library.
+imports only the standard library. External callers use `ccp.api` and nothing
+below it — the CLI does the same, so the API is exercised by a real consumer.
 
 ## Using it
 
 ```bash
 python3 -m ccp.cli build <directory> --out model.ccp   # analyse, represent, verify
+python3 -m ccp.cli info model.ccp                      # sizes
 python3 -m ccp.cli stat model.ccp                      # per-unit breakdown
 python3 -m ccp.cli verify model.ccp                    # reconstruct everything
 python3 -m ccp.cli extract model.ccp <uid> --out file  # one unit, in full
 python3 -m ccp.cli read model.ccp <uid> --offset 8000 --length 256
+python3 -m ccp.cli contract                            # the semantic contract
 ```
 
 `read` is the one worth looking at. It prints the work the read actually cost:
@@ -44,27 +50,28 @@ The window is materialised by executing only the instructions that overlap it.
 A compressed stream cannot do this — it must be inflated from the beginning to
 reach byte 8,000.
 
-As a library:
+As a library, through the stable interface:
 
 ```python
-from ccp.core import InMemoryUnitSource, build_model, serialize
-from ccp.capabilities import CCPReader
+from ccp.api import build, open_representation
 
-source = InMemoryUnitSource({"a": data_a, "b": data_b})
-model = build_model(source)
-assert model.materialize("b") == data_b          # verified against its digest
-window = CCPReader(model).read_range("b", 8000, 256)
-print(window.bytes_touched, window.unit_size)
-open("model.ccp", "wb").write(serialize(model))
+container = build.from_directory("./project")     # or build.from_units({...})
+rt = open_representation(container, verify=True)  # raises on a damaged container
+
+whole  = rt.materialize("src/main.py")            # bit-exact, digest-checked
+window = rt.read_range("src/main.py", 8000, 256)  # only the covering work
+print(window.bytes_touched, window.unit_size, window.instructions_visited)
+print(rt.ledger.summary())
 ```
 
 Any other unit level — functions, tensors, records — is a new `UnitSource` and
 changes nothing else in the Core.
 
-## Tests
+## Tests and benchmark
 
 ```bash
 python3 -m unittest discover -s ccp/tests -t .
+python3 -m ccp.benchmarks.runtime_benchmark <directory>
 ```
 
 No dependencies. Fixtures are hash-derived, never `random`: a flaky result would

@@ -1,14 +1,19 @@
-"""Command-line access to the CCP Core.
+"""Command-line surface for CCP.
 
-This is a thin transport over `ccp.core` and `ccp.capabilities` -- it parses
-arguments, calls the Core and prints what the Core measured. No algorithm lives
-here, and no number printed here is computed here.
+Transport only. It parses arguments, calls `ccp.api`, and prints what the Runtime
+measured. No algorithm lives here and no number printed here is computed here.
+
+It goes through the public API rather than reaching into `ccp.core` directly, so
+the CLI is a consumer of the same interface an external integration would use --
+if the API is not sufficient for the CLI, it is not sufficient for anyone.
 
     python3 -m ccp.cli build <dir> --out model.ccp
+    python3 -m ccp.cli info model.ccp
     python3 -m ccp.cli stat model.ccp
-    python3 -m ccp.cli extract model.ccp <uid> --out file
-    python3 -m ccp.cli read model.ccp <uid> --offset 1024 --length 256
     python3 -m ccp.cli verify model.ccp
+    python3 -m ccp.cli extract model.ccp <uid> --out file
+    python3 -m ccp.cli read model.ccp <uid> --offset 8000 --length 256
+    python3 -m ccp.cli contract
 """
 
 from __future__ import annotations
@@ -18,30 +23,39 @@ import os
 import sys
 from typing import List, Optional, Sequence
 
-from .capabilities import CCPReader
-from .core import (
+from .api import (
     BuildConfig,
     CCPFormatError,
     CCPIntegrityError,
-    DirectoryUnitSource,
-    build_model,
-    container_overhead,
-    deserialize,
-    serialize,
+    UnknownUnitError,
+    build,
+    describe_contract,
+    open_representation,
 )
 
 
 def _format_bytes(count: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if abs(count) < 1024 or unit == "GB":
-            return f"{count:.2f} {unit}" if unit != "B" else f"{int(count)} B"
+            return f"{int(count)} B" if unit == "B" else f"{count:.2f} {unit}"
         count /= 1024
     return f"{count:.2f} GB"
 
 
-def _load(path: str):
-    with open(path, "rb") as handle:
-        return deserialize(handle.read())
+def _print_info(runtime) -> None:
+    info = runtime.info()
+    print(f"units            {info.units}")
+    print(f"  stored in full {info.literals}")
+    print(f"  stored as delta {info.derived}")
+    print(f"original         {_format_bytes(info.original_bytes)}")
+    print(f"representation   {_format_bytes(info.container_bytes)}")
+    print(f"  payload        {_format_bytes(info.payload_bytes)}")
+    print(f"  index          {_format_bytes(info.index_bytes)}")
+    saving = info.saving
+    print(
+        "saving           "
+        + ("n/a (no input bytes)" if saving is None else f"{saving * 100:.2f}%")
+    )
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
@@ -54,50 +68,40 @@ def _cmd_build(args: argparse.Namespace) -> int:
         max_chunk=args.max_chunk,
         min_similarity=args.min_similarity,
     )
-    model = build_model(DirectoryUnitSource(args.directory), config)
-    container = serialize(model)
+    container = build.from_directory(args.directory, config)
     with open(args.out, "wb") as handle:
         handle.write(container)
 
-    # Reconstruct everything before reporting a saving. A representation that has
+    # Reconstruct everything before reporting anything. A representation that has
     # not been shown to give back its input has not been shown to be one.
-    for uid in model.uids():
-        model.materialize(uid)
+    runtime = open_representation(container)
+    report = runtime.verify()
+    _print_info(runtime)
+    if not report.ok:
+        print(f"VERIFICATION FAILED on {len(report.failures)} unit(s)", file=sys.stderr)
+        for uid, error in report.failures[:10]:
+            print(f"  {uid}: {error}", file=sys.stderr)
+        return 1
+    print(f"verified         {report.units_ok}/{report.units_checked} units")
+    return 0
 
-    parts = container_overhead(model, container)
-    original = model.stats.original_bytes
-    print(f"units            {model.stats.units}")
-    print(f"  stored in full {model.stats.literals}")
-    print(f"  stored as delta{model.stats.derived:>4}")
-    print(f"original         {_format_bytes(original)}")
-    print(f"container        {_format_bytes(parts['container_bytes'])}")
-    print(f"  payload        {_format_bytes(parts['payload_bytes'])}")
-    print(f"  index          {_format_bytes(parts['index_bytes'])}")
-    if original:
-        # Measured container length against measured input. Index included.
-        saving = 1.0 - parts["container_bytes"] / original
-        print(f"saving           {saving * 100:.2f}%")
-    else:
-        print("saving           n/a (no input bytes)")
-    print(f"copied bytes     {_format_bytes(model.stats.copied_bytes)}")
-    print(f"added bytes      {_format_bytes(model.stats.added_bytes)}")
-    print("all units reconstructed and verified")
+
+def _cmd_info(args: argparse.Namespace) -> int:
+    _print_info(open_representation(args.container))
     return 0
 
 
 def _cmd_stat(args: argparse.Namespace) -> int:
-    model = _load(args.container)
-    reader = CCPReader(model)
-    print(f"{'unit':40} {'kind':8} {'size':>12} {'stored':>12} {'reuse':>7}")
-    for uid in model.uids():
-        report = reader.reuse_report(uid)
-        ratio = report["reuse_ratio"]
-        ratio_text = "     -" if ratio is None else f"{float(ratio) * 100:5.1f}%"
+    runtime = open_representation(args.container)
+    print(f"{'unit':44} {'kind':8} {'size':>10} {'stored':>10} {'instr':>6} {'reuse':>7}")
+    for uid in runtime.units():
+        unit = runtime.stat(uid)
+        reuse = "     -" if unit.reuse_ratio is None else f"{unit.reuse_ratio * 100:5.1f}%"
         print(
-            f"{uid[:40]:40} {str(report['kind']):8} "
-            f"{int(report['size']):>12} {int(report['encoded_bytes']):>12} {ratio_text:>7}"
+            f"{uid[:44]:44} {unit.kind:8} {unit.size:>10} "
+            f"{unit.stored_bytes:>10} {unit.instructions:>6} {reuse:>7}"
         )
-    groups = reader.shared_base_groups()
+    groups = runtime.groups()
     if groups:
         print()
         print("shared-base groups:")
@@ -106,9 +110,27 @@ def _cmd_stat(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_verify(args: argparse.Namespace) -> int:
+    runtime = open_representation(args.container)
+    report = runtime.verify()
+    if not report.ok:
+        for uid, error in report.failures:
+            print(f"{uid}: {error}", file=sys.stderr)
+        print(
+            f"FAILED {len(report.failures)}/{report.units_checked} units",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"OK {report.units_ok} units, {_format_bytes(report.bytes_verified)} verified "
+        f"in {report.elapsed_seconds * 1000:.1f} ms"
+    )
+    return 0
+
+
 def _cmd_extract(args: argparse.Namespace) -> int:
-    model = _load(args.container)
-    data = model.materialize(args.uid)
+    runtime = open_representation(args.container)
+    data = runtime.materialize(args.uid)
     if args.out:
         with open(args.out, "wb") as handle:
             handle.write(data)
@@ -119,18 +141,19 @@ def _cmd_extract(args: argparse.Namespace) -> int:
 
 
 def _cmd_read(args: argparse.Namespace) -> int:
-    model = _load(args.container)
-    result = CCPReader(model).read_range(args.uid, args.offset, args.length)
+    runtime = open_representation(args.container)
+    result = runtime.read_range(args.uid, args.offset, args.length)
     ratio = result.work_ratio
     print(
-        f"read {len(result.data)} bytes from {args.uid} "
+        f"read {result.bytes_returned} bytes from {args.uid} "
         f"[{args.offset}:{args.offset + args.length}]",
         file=sys.stderr,
     )
     print(
         f"bytes touched {result.bytes_touched} of {result.unit_size} "
         f"({'n/a' if ratio is None else f'{ratio * 100:.2f}%'}); "
-        f"instructions {result.instructions_visited}/{result.instructions_total}",
+        f"instructions {result.instructions_visited}/{result.instructions_total}; "
+        f"{result.elapsed_seconds * 1000:.3f} ms",
         file=sys.stderr,
     )
     if args.out:
@@ -141,59 +164,53 @@ def _cmd_read(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_verify(args: argparse.Namespace) -> int:
-    model = _load(args.container)
-    failures: List[str] = []
-    for uid in model.uids():
-        try:
-            model.materialize(uid)
-        except (CCPIntegrityError, CCPFormatError) as error:
-            failures.append(f"{uid}: {error}")
-    if failures:
-        for line in failures:
-            print(line, file=sys.stderr)
-        print(f"FAILED {len(failures)}/{len(model)} units", file=sys.stderr)
-        return 1
-    print(f"OK {len(model)} units reconstructed and verified")
+def _cmd_contract(args: argparse.Namespace) -> int:
+    print(describe_contract())
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ccp", description="CCP Core")
+    parser = argparse.ArgumentParser(prog="ccp", description="CCP")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    build = sub.add_parser("build", help="build a CCP container from a directory")
-    build.add_argument("directory")
-    build.add_argument("--out", required=True)
-    build.add_argument("--min-chunk", type=int, default=BuildConfig().min_chunk)
-    build.add_argument("--avg-chunk", type=int, default=BuildConfig().avg_chunk)
-    build.add_argument("--max-chunk", type=int, default=BuildConfig().max_chunk)
-    build.add_argument(
-        "--min-similarity", type=float, default=BuildConfig().min_similarity
-    )
-    build.set_defaults(func=_cmd_build)
+    defaults = BuildConfig()
+    cmd = sub.add_parser("build", help="build a representation from a directory")
+    cmd.add_argument("directory")
+    cmd.add_argument("--out", required=True)
+    cmd.add_argument("--min-chunk", type=int, default=defaults.min_chunk)
+    cmd.add_argument("--avg-chunk", type=int, default=defaults.avg_chunk)
+    cmd.add_argument("--max-chunk", type=int, default=defaults.max_chunk)
+    cmd.add_argument("--min-similarity", type=float, default=defaults.min_similarity)
+    cmd.set_defaults(func=_cmd_build)
 
-    stat = sub.add_parser("stat", help="per-unit representation breakdown")
-    stat.add_argument("container")
-    stat.set_defaults(func=_cmd_stat)
+    cmd = sub.add_parser("info", help="sizes of a representation")
+    cmd.add_argument("container")
+    cmd.set_defaults(func=_cmd_info)
 
-    extract = sub.add_parser("extract", help="materialise one unit")
-    extract.add_argument("container")
-    extract.add_argument("uid")
-    extract.add_argument("--out")
-    extract.set_defaults(func=_cmd_extract)
+    cmd = sub.add_parser("stat", help="per-unit breakdown")
+    cmd.add_argument("container")
+    cmd.set_defaults(func=_cmd_stat)
 
-    read = sub.add_parser("read", help="partial read, reporting the work it cost")
-    read.add_argument("container")
-    read.add_argument("uid")
-    read.add_argument("--offset", type=int, default=0)
-    read.add_argument("--length", type=int, default=256)
-    read.add_argument("--out")
-    read.set_defaults(func=_cmd_read)
+    cmd = sub.add_parser("verify", help="reconstruct and verify every unit")
+    cmd.add_argument("container")
+    cmd.set_defaults(func=_cmd_verify)
 
-    verify = sub.add_parser("verify", help="reconstruct and verify every unit")
-    verify.add_argument("container")
-    verify.set_defaults(func=_cmd_verify)
+    cmd = sub.add_parser("extract", help="materialise one unit")
+    cmd.add_argument("container")
+    cmd.add_argument("uid")
+    cmd.add_argument("--out")
+    cmd.set_defaults(func=_cmd_extract)
+
+    cmd = sub.add_parser("read", help="selective read, reporting the work it cost")
+    cmd.add_argument("container")
+    cmd.add_argument("uid")
+    cmd.add_argument("--offset", type=int, default=0)
+    cmd.add_argument("--length", type=int, default=256)
+    cmd.add_argument("--out")
+    cmd.set_defaults(func=_cmd_read)
+
+    cmd = sub.add_parser("contract", help="print the semantic contract")
+    cmd.set_defaults(func=_cmd_contract)
     return parser
 
 
@@ -202,15 +219,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         return int(args.func(args))
     except BrokenPipeError:
-        # `ccp stat ... | head` closes the pipe early. That is ordinary usage,
-        # not an error, but Python would otherwise also complain at shutdown
-        # when it flushes stdout, so stdout is redirected away first.
+        # `ccp stat ... | head` closes the pipe early. Ordinary usage, not an
+        # error, but stdout is redirected away so Python does not also complain
+        # when it flushes at shutdown.
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return 0
     except (CCPFormatError, CCPIntegrityError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    except KeyError as error:
+    except UnknownUnitError as error:
+        print(f"error: unknown unit {error}", file=sys.stderr)
+        return 2
+    except (FileNotFoundError, NotADirectoryError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
 

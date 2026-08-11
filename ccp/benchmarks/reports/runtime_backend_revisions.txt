@@ -1,0 +1,55 @@
+CCP RUNTIME BENCHMARK
+========================================================================
+input: /tmp/claude-0/-home-user-harel/2acb118e-4bf8-5086-9012-a5338a9bcdb7/scratchpad/proj
+
+REPRESENTATION
+------------------------------------------------------------------------
+units                111 (60 full, 51 derived)
+original             723.14 KB
+representation       449.95 KB
+  payload            440.86 KB
+  index              9.09 KB
+saving               37.78%
+build time           233.2 ms
+load time            0.62 ms (best of 5)
+
+CORRECTNESS
+------------------------------------------------------------------------
+units verified       111/111
+bytes verified       723.14 KB
+verify time          1.4 ms
+
+SELECTIVE READ
+------------------------------------------------------------------------
+unit                 v2/backend/modules/identity/service.py
+unit size            26.71 KB
+kind                 derived
+instructions         1
+
+    window    touched  touched %        instr  latency ms  correct
+        64         64      0.23%          1/1      0.0096      yes
+       256        256      0.94%          1/1      0.0068      yes
+      4096       4096     14.98%          1/1      0.0070      yes
+
+      full      27347    100.00%          1/1      0.0462      yes
+
+  'full' is materialising the unit and slicing it -- the baseline a
+  selective read is measured against. Latency is reported, not relied on:
+  the correctness column comes from byte comparison, not from timing.
+
+CORPUS SWEEP: 256-byte read from every unit
+------------------------------------------------------------------------
+units read           111
+mismatches           0
+bytes touched        26203 (selective)
+                     740496 (full materialisation of the same units)
+work ratio           3.54%
+instructions visited 113
+wall clock           1.5 ms (both paths, including checks)
+
+VERDICT
+------------------------------------------------------------------------
+Every unit reconstructed and matched its recorded digest, and every
+selective read matched the corresponding slice of a full
+reconstruction. The runtime serves windows by executing only the
+instructions that cover them.
