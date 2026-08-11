@@ -66,3 +66,36 @@ class UnsupportedOperationError(ProductError):
 
 class ResourceError(ProductError):
     """A resource-level failure: artifact closed, too large, or unreadable."""
+
+
+class CommercialError(ProductError):
+    """Base of commercial-layer errors. Catch this for all billing/payment failures."""
+
+
+class ContractError(CommercialError):
+    """Contract validation or versioning failure."""
+
+
+class TermsNotAcceptedError(CommercialError):
+    """Required terms have not been accepted by the customer."""
+
+    def __init__(self, customer_id: str, terms_version: int) -> None:
+        super().__init__(
+            f"customer {customer_id!r} has not accepted terms version {terms_version}"
+        )
+        self.customer_id = customer_id
+        self.terms_version = terms_version
+
+
+class PaymentError(CommercialError):
+    """Payment provider returned an error."""
+
+    def __init__(
+        self, error_code: str, error_message: str, cause: Optional[BaseException] = None
+    ) -> None:
+        super().__init__(f"payment error {error_code}: {error_message}", cause)
+        self.error_code = error_code
+
+
+class LedgerError(CommercialError):
+    """Ledger persistence or read failure."""
