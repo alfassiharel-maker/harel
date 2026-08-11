@@ -1,0 +1,3 @@
+# Build-time only. The application itself has no runtime dependencies:
+# `ccp` imports the standard library and nothing else.
+pyinstaller>=6.0

@@ -5,10 +5,13 @@ everything else is stored as a **change program** against it. Executing that
 program reconstructs the unit. Reading it — without executing it — is what lets
 work happen over the representation instead of over the bytes.
 
+**Users start at [`USER_GUIDE.md`](USER_GUIDE.md).** Launch the application with
+`python3 -m ccp`, or run the packaged executable — no Python needed.
+
 `docs/00-core-spec.md` specifies the Core; `docs/01-runtime.md` the Runtime and
-the semantic contract; `docs/02-product-engine.md` the Product Engine. Every
-element is classified IMPLEMENTED / NOT SUPPORTED / OPEN. Read them before
-changing a layer.
+the semantic contract; `docs/02-product-engine.md` the Product Engine;
+`docs/03-application.md` the application and packaging. Every element is
+classified IMPLEMENTED / NOT SUPPORTED / OPEN. Read them before changing a layer.
 
 ## Status
 
@@ -20,8 +23,9 @@ ccp.runtime       loading, integrity, selective access,     IMPLEMENTED
 ccp.api           the stable public interface               IMPLEMENTED
 ccp.product       artifact lifecycle, typed errors,         IMPLEMENTED
                   per-operation observability
-ccp.integration   project import, language analysis         NOT BUILT
-ccp.ui            the commercial surface                    NOT BUILT
+ccp.integration   input adapters, build pipeline,           IMPLEMENTED
+                  workspace and safe file writing
+ccp.ui            CCP Forge: the application                IMPLEMENTED
 ```
 
 Layers that are not built are absent from the tree rather than stubbed, so the
@@ -70,12 +74,20 @@ Or the lower-level runtime surface directly via `ccp.api` (`build.from_directory
 `open_representation`). Any other unit level — functions, tensors, records — is a
 new `UnitSource` and changes nothing else in the Core.
 
+## The application
+
+```bash
+python3 -m ccp                             # launch CCP Forge
+python3 packaging/build_app.py             # build the standalone executable
+```
+
 ## Tests and benchmarks
 
 ```bash
-python3 -m unittest discover -s ccp/tests -t .
+python3 -m unittest discover -s ccp/tests -t .        # 185 tests
 python3 -m ccp.benchmarks.runtime_benchmark <directory>
 python3 -m ccp.benchmarks.product_benchmark <directory>
+python3 -m ccp.benchmarks.final_validation <directory>
 ```
 
 No dependencies. Fixtures are hash-derived, never `random`: a flaky result would

@@ -10,8 +10,8 @@ that is not built yet:
     ccp.api           the stable public interface                [implemented]
     ccp.product       artifact lifecycle, typed errors,          [implemented]
                       per-operation observability
-    ccp.integration   project import, language analysis          [not built]
-    ccp.ui            the commercial surface                     [not built]
+    ccp.integration   input adapters, build pipeline, workspace  [implemented]
+    ccp.ui            CCP Forge: the application                 [implemented]
 
 External callers use `ccp.product` for artifact-oriented access, or `ccp.api`
 for the lower-level runtime surface. Neither reaches into `ccp.core`.
@@ -21,7 +21,14 @@ absent from the tree rather than present and empty, so the code cannot be
 mistaken for a working system with unfinished parts.
 """
 
-from . import api, capabilities, core, product, runtime
+from . import api, capabilities, core, integration, product, runtime
 
-__all__ = ["core", "capabilities", "runtime", "api", "product"]
+__all__ = [
+    "core",
+    "capabilities",
+    "runtime",
+    "api",
+    "product",
+    "integration",
+]
 __version__ = "0.1.0"

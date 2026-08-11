@@ -1,0 +1,56 @@
+CCP FORGE — FINAL REAL-DATA VALIDATION
+==========================================================================
+input:    /home/user/harel/backend
+platform: linux
+driven through: ccp.ui.controller.AppController (the application layer)
+
+1. BUILD
+--------------------------------------------------------------------------
+   input size          368.87 KB (377723 bytes)
+   artifact size       372.05 KB (380984 bytes)
+   savings             -0.86%
+   units               55 (55 full, 0 derived)
+   shared-base groups  0
+   build time          78 ms
+
+2. VERIFICATION
+--------------------------------------------------------------------------
+   result              PASS
+   units verified      55/55
+   bytes verified      368.87 KB
+   time                1 ms
+
+3. SELECTIVE READ
+--------------------------------------------------------------------------
+   unit                integrations/garmin/adapter.py
+   size                31.65 KB   kind literal   instructions 0
+
+      window  returned   touched  work ratio     instr  correct
+          64        64        64      0.197%       1/1      yes
+         256       256       256      0.790%       1/1      yes
+        4096      4096      4096     12.640%       1/1      yes
+        full     32406     32406    100.000%       0/0      yes
+
+4. CORRECTNESS AGAINST THE ORIGINAL FILES
+--------------------------------------------------------------------------
+   units exported and compared   55
+   byte-for-byte mismatches      0
+
+5. CORPUS SWEEP — 256-byte selective read from every unit
+--------------------------------------------------------------------------
+   units read                    55
+   bytes returned                13004
+   bytes touched                 13004
+   artifact content total        377723
+   touched / total               3.443%
+
+6. PACKAGED APPLICATION
+--------------------------------------------------------------------------
+   CCPForge         8.05 MB
+   CCPForge.pyz     227.72 KB
+
+VERDICT
+--------------------------------------------------------------------------
+   PASS — the artifact verified, every exported unit matched the
+   original file byte for byte, and selective reads touched a small
+   fraction of what a full reconstruction touches.
