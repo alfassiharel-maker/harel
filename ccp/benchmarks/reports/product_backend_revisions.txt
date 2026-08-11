@@ -1,0 +1,45 @@
+CCP PRODUCT ENGINE BENCHMARK
+========================================================================
+input: /tmp/claude-0/-home-user-harel/2acb118e-4bf8-5086-9012-a5338a9bcdb7/scratchpad/proj
+
+ARTIFACT
+------------------------------------------------------------------------
+origin               bytes:memory
+units                111 (60 full, 51 derived)
+original             723.14 KB
+representation       449.95 KB
+saving               37.78%
+build time           243.1 ms
+open time            0.64 ms (best of 5)
+validate             111/111 units, 1.4 ms
+verification state   verified
+
+SELECTIVE ACCESS (product read_range)
+------------------------------------------------------------------------
+unit                 v2/backend/modules/identity/service.py
+unit size            26.71 KB   kind derived
+
+    window  requested    touched  touched %      instr             verify  correct
+        64         64         64      0.23%        1/1   slice_unverified      yes
+       256        256        256      0.94%        1/1   slice_unverified      yes
+      4096       4096       4096     14.98%        1/1   slice_unverified      yes
+      full      27347      27347    100.00%        1/1     digest_checked      yes
+
+CORPUS SWEEP: 256-byte product read from every unit
+------------------------------------------------------------------------
+units read           111
+mismatches           0
+bytes returned       26203
+bytes touched        26203
+artifact total       740496
+touched / total      3.539%
+instructions visited 113
+
+VERDICT
+------------------------------------------------------------------------
+The product engine opened, validated, and served selective reads over
+a real artifact through its public API. Every read matched a full
+materialisation, and windowed reads touched a small fraction of the
+artifact — the whole was never materialised to serve a part.
+
+artifact closed      True (resources released explicitly)

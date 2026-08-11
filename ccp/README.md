@@ -5,10 +5,10 @@ everything else is stored as a **change program** against it. Executing that
 program reconstructs the unit. Reading it — without executing it — is what lets
 work happen over the representation instead of over the bytes.
 
-`docs/00-core-spec.md` specifies the Core; `docs/01-runtime.md` specifies the
-Runtime and the semantic contract it enforces. Every element is classified as
-defined-by-user, engineering decision, or open question. Read them before
-changing either layer.
+`docs/00-core-spec.md` specifies the Core; `docs/01-runtime.md` the Runtime and
+the semantic contract; `docs/02-product-engine.md` the Product Engine. Every
+element is classified IMPLEMENTED / NOT SUPPORTED / OPEN. Read them before
+changing a layer.
 
 ## Status
 
@@ -18,15 +18,18 @@ ccp.capabilities  work performed on the representation      IMPLEMENTED
 ccp.runtime       loading, integrity, selective access,     IMPLEMENTED
                   work accounting, under a stated contract
 ccp.api           the stable public interface               IMPLEMENTED
+ccp.product       artifact lifecycle, typed errors,         IMPLEMENTED
+                  per-operation observability
 ccp.integration   project import, language analysis         NOT BUILT
-ccp.product       build orchestration, packaging            NOT BUILT
 ccp.ui            the commercial surface                    NOT BUILT
 ```
 
 Layers that are not built are absent from the tree rather than stubbed, so the
 package cannot be mistaken for a working system with unfinished parts. `ccp.core`
-imports only the standard library. External callers use `ccp.api` and nothing
-below it — the CLI does the same, so the API is exercised by a real consumer.
+imports only the standard library. External callers use `ccp.product` for
+artifact-oriented access or `ccp.api` for the runtime surface; neither reaches
+into `ccp.core`, and the CLI goes through `ccp.api` too, so it is exercised by a
+real consumer.
 
 ## Using it
 
@@ -50,28 +53,29 @@ The window is materialised by executing only the instructions that overlap it.
 A compressed stream cannot do this — it must be inflated from the beginning to
 reach byte 8,000.
 
-As a library, through the stable interface:
+As a library — the product layer, with a lifecycle and typed errors:
 
 ```python
-from ccp.api import build, open_representation
+from ccp.product import ProductEngine
 
-container = build.from_directory("./project")     # or build.from_units({...})
-rt = open_representation(container, verify=True)  # raises on a damaged container
-
-whole  = rt.materialize("src/main.py")            # bit-exact, digest-checked
-window = rt.read_range("src/main.py", 8000, 256)  # only the covering work
-print(window.bytes_touched, window.unit_size, window.instructions_visited)
-print(rt.ledger.summary())
+engine = ProductEngine()
+with engine.open("model.ccp", verify=True) as artifact:   # raises on a bad artifact
+    whole  = artifact.materialize("src/main.py")           # bit-exact, digest-checked
+    window = artifact.read_range("src/main.py", 8000, 256) # only the covering work
+    print(window.data, window.report.bytes_touched, window.report.work_ratio)
+    print(artifact.ledger.summary())
 ```
 
-Any other unit level — functions, tensors, records — is a new `UnitSource` and
-changes nothing else in the Core.
+Or the lower-level runtime surface directly via `ccp.api` (`build.from_directory`,
+`open_representation`). Any other unit level — functions, tensors, records — is a
+new `UnitSource` and changes nothing else in the Core.
 
-## Tests and benchmark
+## Tests and benchmarks
 
 ```bash
 python3 -m unittest discover -s ccp/tests -t .
 python3 -m ccp.benchmarks.runtime_benchmark <directory>
+python3 -m ccp.benchmarks.product_benchmark <directory>
 ```
 
 No dependencies. Fixtures are hash-derived, never `random`: a flaky result would
