@@ -1,24 +1,34 @@
 # OPEN DESIGN DECISIONS
 
-Master Specification §54 lists decisions that no agent may resolve silently. This
-file is the register. Every item is either **OPEN** (unresolved — nothing in the
-tree may depend on an answer) or **DECIDED for 0.1** with the alternatives that
-were rejected and why.
+Master Specification §54 lists decisions that no agent may resolve silently.
+This file lists them, plus the proposals the implementation currently embodies.
 
-Moving an item from OPEN to DECIDED requires the amendment procedure in
-`01_LANGUAGE_CONSTITUTION.md` §9.
+**Nothing in this file is approved.** The full classification — what the
+specification actually settles, what follows from it, what I assumed, and what
+remains reserved — is in `docs/SEMANTIC_DECISION_REGISTER.md`, produced by the
+design audit (`docs/DESIGN_AUDIT.md`).
+
+Moving an item from OPEN to DECIDED is an act of the language's owner, recorded
+through the amendment procedure in `01_LANGUAGE_CONSTITUTION.md` §9. An agent
+may propose; it may not decide.
 
 ---
 
-## Decided for 0.1
+## Proposed for 0.1 — **NOT APPROVED**
 
-| # | Decision | Resolution | Rejected | Where |
+These are the decisions the implementation currently embodies. The heading used
+to read *"Decided for 0.1"*, which was wrong: an agent implementing a
+specification cannot decide what the specification reserved. Each row is a
+**proposal**, and `docs/SEMANTIC_DECISION_REGISTER.md` states which of them the
+specification actually settles (few) and which I assumed (most).
+
+| # | Proposal | Current behaviour | Alternatives rejected *in the proposal* | Where |
 |---|---|---|---|---|
 | 1 | What is a Rule? | Pure implication, fires at most once, no side effects | procedure, trigger, constraint | Const §3.2 |
 | 2 | What is a Fact? | Typed, ground, immutable, named binding with an origin | mutable state, relation/tuple | Const §3.1 |
 | 3 | What is Inference? | Forward chaining to a least fixed point over a monotone fact set | backward chaining, hybrid, search | Const §3.4 |
 | 4 | Unit of execution | The program | rule set, transaction, goal | Const §3.4 |
-| 5 | Conflict resolution | Different values for one name ⇒ error `E4001` | priority, specificity, source order, multi-result | Const §4 |
+| 5 | Conflict resolution | Different values for one name ⇒ error `E4001` | priority, specificity, source order, multi-result | Const §4 — **the §23 design review has NOT happened; see audit §0** |
 | 6 | Cycle semantics | No special handling needed; monotone iteration terminates. Round limit is a defect backstop | error on cycle, iteration limit as semantics, explicit recursion | Const §5 |
 | 7 | Evaluation strategy | Eager, both operands of `and`/`or` always evaluated so `NotEvaluable` propagates | short-circuit | Formal §4.1 |
 | 8 | Determinism | Total; ordered maps, source-order rules, no clock, no randomness | opt-in determinism | Const §6 |

@@ -14,6 +14,15 @@ implemented. Where the Engineering Implementation Spec and this document
 disagree, **this document decides semantics; the engineering spec decides how the
 code is organised.**
 
+> ⚠️ **PROVISIONAL — not approved language semantics.**
+> A design audit (`docs/DESIGN_AUDIT.md`) found that most of the rules in this
+> document were decided by the implementation, not by the specification. Read
+> every rule here together with `docs/SEMANTIC_DECISION_REGISTER.md`, which
+> classifies each one as EXPLICITLY_SPECIFIED, DERIVED, ASSUMED BY
+> IMPLEMENTATION, or OPEN DESIGN DECISION. Anything marked ASSUMED or OPEN is a
+> **proposal awaiting the owner's decision**, regardless of how this document
+> phrases it. The word "decided" below means "decided in code", not "approved".
+
 ---
 
 ## 0. Naming
@@ -196,7 +205,15 @@ If two rules derive the same name with **different** values, execution fails wit
 
 The Master Specification §23 lists priority, specificity, explicit ordering,
 error, multi-result and custom strategies, and forbids choosing before a design
-review. This *is* that review, and the reasoning is:
+review.
+
+> **WITHDRAWN.** This document previously claimed *"This **is** that review."*
+> It was not: a design review is an act of the language's owner, and an agent
+> cannot convene one over its own proposal. The behaviour below stands in code
+> as a **proposal**, and the decision is OPEN
+> (`docs/SEMANTIC_DECISION_REGISTER.md` §5).
+
+The reasoning offered in support of the proposal:
 
 - Any silent winner (priority, source order, specificity) makes the language's
   answer depend on something the author did not write down. That violates §1.3.

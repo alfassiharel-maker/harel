@@ -3,6 +3,15 @@
 Status: **Binding**
 Implements: the Engineering Implementation Spec (`ENGINEERING_IMPLEMENTATION_SPEC.md`)
 
+> ⚠️ **PROVISIONAL — not approved language semantics.**
+> A design audit (`docs/DESIGN_AUDIT.md`) found that most of the rules in this
+> document were decided by the implementation, not by the specification. Read
+> every rule here together with `docs/SEMANTIC_DECISION_REGISTER.md`, which
+> classifies each one as EXPLICITLY_SPECIFIED, DERIVED, ASSUMED BY
+> IMPLEMENTATION, or OPEN DESIGN DECISION. Anything marked ASSUMED or OPEN is a
+> **proposal awaiting the owner's decision**, regardless of how this document
+> phrases it. The word "decided" below means "decided in code", not "approved".
+
 ---
 
 ## 1. Layers

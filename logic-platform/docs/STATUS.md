@@ -14,6 +14,13 @@ Here, the three mean:
 
 Nothing below is marked VERIFIED because it "looked right".
 
+> ⚠️ **Read VERIFIED as "verified against a provisional specification".**
+> The design audit (`docs/DESIGN_AUDIT.md`) found that most of the semantics
+> these tests check were decided by the implementation rather than by the
+> Master Specification. The tests prove the engine does what `docs/01`–`docs/05`
+> say; they cannot prove those documents say the right thing. Per-decision
+> provenance is in `docs/SEMANTIC_DECISION_REGISTER.md`.
+
 ---
 
 ## Language core (Master Spec §50)
