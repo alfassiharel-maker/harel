@@ -1,0 +1,6 @@
+# Division by zero is refused at run time rather than producing an infinity.
+fact a = 0
+
+rule divide: when a == 0 then b = 10 / a
+
+output b

@@ -1,0 +1,22 @@
+[package]
+name = "lml-cli"
+description = "The developer-facing command line. Transport only: it holds no semantics."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "lml"
+path = "src/main.rs"
+
+[dependencies]
+lml-ast = { path = "../ast" }
+lml-compiler = { path = "../compiler" }
+lml-diagnostics = { path = "../diagnostics" }
+lml-ir = { path = "../ir" }
+lml-runtime = { path = "../runtime" }
+lml-trace = { path = "../trace" }
+lml-types = { path = "../types" }
+
+[lints]
+workspace = true

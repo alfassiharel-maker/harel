@@ -1,0 +1,12 @@
+[package]
+name = "lml-ast"
+description = "The syntax tree. Data only: no evaluation, no validation, no I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+
+[lints]
+workspace = true

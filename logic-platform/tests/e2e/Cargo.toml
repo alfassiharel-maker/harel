@@ -1,0 +1,17 @@
+[package]
+name = "lml-e2e"
+description = "End-to-end tests: every fixture, from source text to outputs and trace."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+lml-compiler = { path = "../../crates/compiler" }
+lml-runtime = { path = "../../crates/runtime" }
+lml-trace = { path = "../../crates/trace" }
+
+[lints]
+workspace = true

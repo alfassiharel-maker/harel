@@ -1,0 +1,5 @@
+# unwrap/expect/panic are denied in library code (docs/03_EXECUTION_MODEL.md §8)
+# and permitted in tests, where a panic is the reporting mechanism.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

@@ -1,0 +1,12 @@
+[package]
+name = "lml-types"
+description = "The type lattice and the operator typing rules. No evaluation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-ast = { path = "../ast" }
+
+[lints]
+workspace = true

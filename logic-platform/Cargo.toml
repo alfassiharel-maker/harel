@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/diagnostics",
+    "crates/lexer",
+    "crates/ast",
+    "crates/parser",
+    "crates/types",
+    "crates/semantic",
+    "crates/ir",
+    "crates/logic",
+    "crates/compiler",
+    "crates/trace",
+    "crates/reasoning",
+    "crates/runtime",
+    "crates/cli",
+    "tests/e2e",
+]
+
+# The workspace has zero third-party dependencies. This is a tested property
+# (tests/e2e/tests/no_dependencies.rs), not an aspiration: it keeps
+# `git clone && cargo test` working offline and keeps the supply-chain surface
+# empty. Adding one requires the written justification of
+# docs/ENGINEERING_IMPLEMENTATION_SPEC.md §30.
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+# No `license` field: the licensing model is a product decision that the Master
+# Specification puts in the last phase (§45), and stamping a licence here would
+# be that decision made by accident. Nothing is published to a registry.
+publish = false
+repository = "https://github.com/alfassiharel-maker/harel"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.release]
+overflow-checks = true

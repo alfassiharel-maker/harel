@@ -1,0 +1,11 @@
+   0 ExecutionStarted language=0.1 ir=1 program=ec777c2260df7b4ce3ca6ff9c30512c94ec9394c4f6c39acec8c534c2726c7f1
+   1 FactDeclared temperature = 31
+   2 RoundStarted 1
+   3 ConditionEvaluated heat -> true
+   4 RuleActivated heat reads temperature
+   5 FactDerived status = "hot" by heat
+   6 RoundFinished 1 fired=true
+   7 RoundStarted 2
+   8 RoundFinished 2 fired=false
+   9 OutputEmitted status = "hot"
+  10 ExecutionFinished rounds=2 facts=2 fired=1

@@ -1,0 +1,14 @@
+[package]
+name = "lml-logic"
+description = "Logic objects: facts, the fact set, and evaluation of expressions over them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+lml-ir = { path = "../ir" }
+lml-types = { path = "../types" }
+
+[lints]
+workspace = true

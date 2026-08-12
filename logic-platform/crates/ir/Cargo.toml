@@ -1,0 +1,13 @@
+[package]
+name = "lml-ir"
+description = "The intermediate representation: the contract between the language and the runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+lml-types = { path = "../types" }
+
+[lints]
+workspace = true

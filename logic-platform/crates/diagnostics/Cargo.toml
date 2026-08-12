@@ -1,0 +1,9 @@
+[package]
+name = "lml-diagnostics"
+description = "Source spans, error codes and diagnostics. Leaf crate: depends on nothing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

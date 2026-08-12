@@ -1,0 +1,17 @@
+[package]
+name = "lml-semantic"
+description = "Name resolution, type inference and every static check. Produces the validated semantic model."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-ast = { path = "../ast" }
+lml-diagnostics = { path = "../diagnostics" }
+lml-types = { path = "../types" }
+
+[dev-dependencies]
+lml-parser = { path = "../parser" }
+
+[lints]
+workspace = true

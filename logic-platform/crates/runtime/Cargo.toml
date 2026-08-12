@@ -1,0 +1,20 @@
+[package]
+name = "lml-runtime"
+description = "Execution: the context, the limits, and the run loop."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+lml-ir = { path = "../ir" }
+lml-logic = { path = "../logic" }
+lml-reasoning = { path = "../reasoning" }
+lml-trace = { path = "../trace" }
+lml-types = { path = "../types" }
+
+[dev-dependencies]
+lml-compiler = { path = "../compiler" }
+
+[lints]
+workspace = true

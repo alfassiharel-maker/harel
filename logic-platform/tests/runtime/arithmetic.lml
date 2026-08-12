@@ -1,0 +1,11 @@
+fact base = 7
+fact scale = 2
+
+rule compute:
+    when base > 0
+    then quotient = base / scale
+    then remainder = base % scale
+    then negated = -base
+    then combined = (base + scale) * 2
+
+output quotient, remainder, negated, combined

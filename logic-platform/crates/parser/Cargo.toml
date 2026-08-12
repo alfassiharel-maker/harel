@@ -1,0 +1,14 @@
+[package]
+name = "lml-parser"
+description = "Tokens to syntax tree. Owns the grammar; knows nothing of types or meaning."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-ast = { path = "../ast" }
+lml-diagnostics = { path = "../diagnostics" }
+lml-lexer = { path = "../lexer" }
+
+[lints]
+workspace = true

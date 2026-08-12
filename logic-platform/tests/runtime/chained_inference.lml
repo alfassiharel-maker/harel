@@ -1,0 +1,8 @@
+# Each rule feeds the next; the engine runs to a fixed point.
+fact a = 1
+
+rule step1: when a > 0 then b = a + 1
+rule step2: when b > 1 then c = b * 10
+rule step3: when c > 10 then d = c - a
+
+output b, c, d

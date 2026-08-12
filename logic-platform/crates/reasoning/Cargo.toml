@@ -1,0 +1,20 @@
+[package]
+name = "lml-reasoning"
+description = "The inference strategy: rule activation, the fixed point, conflict detection."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+lml-ir = { path = "../ir" }
+lml-logic = { path = "../logic" }
+lml-types = { path = "../types" }
+# Reasoning appends to a trace the runtime owns. Recording what the engine did
+# is not observability bolted onto semantics: which rules were tried, in what
+# order, and what they were waiting for is exactly what this crate decides, and
+# nothing else can report it.
+lml-trace = { path = "../trace" }
+
+[lints]
+workspace = true

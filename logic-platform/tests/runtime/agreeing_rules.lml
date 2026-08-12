@@ -1,0 +1,7 @@
+# Two rules deriving the same value for one name is not a conflict.
+fact a = 1
+
+rule first: when a > 0 then s = 5
+rule second: when a == 1 then s = 5
+
+output s

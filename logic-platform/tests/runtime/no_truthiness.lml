@@ -1,0 +1,6 @@
+# A condition must be Bool. An integer is not "truthy".
+fact a = 1
+
+rule bad: when a then b = 1
+
+output b

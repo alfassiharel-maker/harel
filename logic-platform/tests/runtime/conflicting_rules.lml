@@ -1,0 +1,9 @@
+# Two rules deriving different values for one name is E4001. 0.1 has no
+# priority mechanism: a silent winner would depend on something the author
+# never wrote down.
+fact a = 1
+
+rule first: when a > 0 then s = 5
+rule second: when a == 1 then s = 6
+
+output s

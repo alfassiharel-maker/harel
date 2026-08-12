@@ -1,0 +1,32 @@
+(* LML 0.1 grammar.
+   Normative source: docs/02_FORMAL_SEMANTICS.md §2.
+   tests/grammar.rs checks that this file and that section agree; if you change
+   one, change both. The parser is hand-written recursive descent, which this
+   grammar describes rather than generates. *)
+
+program        = { item } EOF ;
+
+item           = fact_decl | rule_decl | output_decl ;
+
+fact_decl      = "fact" IDENT "=" expr ;
+
+rule_decl      = "rule" IDENT ":" "when" expr then_clause { then_clause } ;
+
+then_clause    = "then" IDENT "=" expr ;
+
+output_decl    = "output" IDENT { "," IDENT } ;
+
+expr           = or_expr ;
+or_expr        = and_expr { "or" and_expr } ;
+and_expr       = not_expr { "and" not_expr } ;
+not_expr       = "not" not_expr | comparison ;
+comparison     = additive [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) additive ] ;
+additive       = multiplicative { ( "+" | "-" ) multiplicative } ;
+multiplicative = unary { ( "*" | "/" | "%" ) unary } ;
+unary          = "-" unary | primary ;
+primary        = INT | FLOAT | STRING | BOOL | IDENT | "(" expr ")" ;
+
+(* Comparison does not chain: `a < b < c` is E2005, not `(a < b) < c`.
+   Declarations have no terminator; one ends where the next keyword begins,
+   which is unambiguous because every keyword is reserved and none can continue
+   an expression. *)

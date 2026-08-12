@@ -1,0 +1,9 @@
+# `waiting` reads a name that is never derived, so it never becomes evaluable.
+# An unknown read is pending, never false - so `blocked` stays unknown too.
+fact a = 1
+
+rule impossible: when a > 99 then never = 1
+rule waiting: when never > 0 then blocked = 1
+rule fallback: when not (a > 99) then reachable = "yes"
+
+output blocked, reachable

@@ -1,0 +1,20 @@
+[package]
+name = "lml-benchmarks"
+description = "Measurement, not correctness: where the time goes at each stage."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lml-bench"
+path = "src/main.rs"
+
+[dependencies]
+lml-compiler = { path = "../crates/compiler" }
+lml-parser = { path = "../crates/parser" }
+lml-runtime = { path = "../crates/runtime" }
+lml-semantic = { path = "../crates/semantic" }
+
+[lints]
+workspace = true

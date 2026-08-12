@@ -1,0 +1,21 @@
+[package]
+name = "lml-compiler"
+description = "Orchestrates lex, parse, analyse and lower. Holds no analysis of its own."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-ast = { path = "../ast" }
+lml-diagnostics = { path = "../diagnostics" }
+lml-ir = { path = "../ir" }
+# Constant folding evaluates a fact's value with the same evaluator the runtime
+# uses, so a declared value and a derived value can never disagree about what
+# `1 / 0` or `i64::MAX + 1` means. That is the whole justification for this edge.
+lml-logic = { path = "../logic" }
+lml-parser = { path = "../parser" }
+lml-semantic = { path = "../semantic" }
+lml-types = { path = "../types" }
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+# Int and Float do not mix. There is no implicit widening anywhere.
+fact a = 1
+fact b = 1.0
+
+rule mix: when a > 0 then c = a + b
+
+output c

@@ -1,0 +1,12 @@
+[package]
+name = "lml-lexer"
+description = "Source text to tokens. Knows structure, never meaning."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+
+[lints]
+workspace = true

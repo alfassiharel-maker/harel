@@ -1,0 +1,12 @@
+# The canonical program of the specification: a fact, a rule, an output.
+# Run it with:  lml run examples/temperature.lml
+#               lml trace examples/temperature.lml
+#               lml why examples/temperature.lml status
+
+fact temperature = 31
+
+rule heat:
+    when temperature > 30
+    then status = "hot"
+
+output status

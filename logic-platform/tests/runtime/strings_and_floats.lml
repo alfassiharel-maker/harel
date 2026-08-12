@@ -1,0 +1,7 @@
+fact greeting = "hello"
+fact ratio = 1.5
+
+rule join: when ratio > 1.0 then message = greeting + " world"
+rule scale: when ratio > 1.0 then doubled = ratio * 2.0
+
+output message, doubled

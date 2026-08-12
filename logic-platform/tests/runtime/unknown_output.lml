@@ -1,0 +1,9 @@
+# Nothing derives `status`, so the answer is that the engine does not know.
+# It is not "", not 0, and not an error.
+fact temperature = 20
+
+rule heat:
+    when temperature > 30
+    then status = "hot"
+
+output status

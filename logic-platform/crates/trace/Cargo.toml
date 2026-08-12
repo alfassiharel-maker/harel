@@ -1,0 +1,13 @@
+[package]
+name = "lml-trace"
+description = "Structured execution events, their JSON form, and explanation from a trace."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lml-diagnostics = { path = "../diagnostics" }
+lml-types = { path = "../types" }
+
+[lints]
+workspace = true

@@ -1,0 +1,46 @@
+name: logic-platform
+
+# Scoped to the language platform: the Python analytics engine in this
+# repository has its own workflow and is unaffected by changes here.
+on:
+  push:
+    paths:
+      - 'logic-platform/**'
+      - '.github/workflows/logic-platform.yml'
+  pull_request:
+    paths:
+      - 'logic-platform/**'
+      - '.github/workflows/logic-platform.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: logic-platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Architecture
+        run: ./scripts/check-architecture.sh
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Release build
+        run: cargo build --release --workspace
+
+      - name: The canonical program still produces the specified result
+        run: |
+          set -euo pipefail
+          result=$(./target/release/lml run examples/temperature.lml)
+          [[ "$result" == 'status = "hot"' ]] || { echo "got: $result"; exit 1; }

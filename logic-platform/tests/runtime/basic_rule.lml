@@ -1,0 +1,7 @@
+fact temperature = 31
+
+rule heat:
+    when temperature > 30
+    then status = "hot"
+
+output status
