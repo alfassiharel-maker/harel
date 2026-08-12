@@ -1,7 +1,9 @@
 # SEMANTIC DECISION REGISTER
 
-Status: **audit output — nothing here is approved language semantics**
+Status: **live register** — three decisions are approved (§0); everything else is
+unapproved and marked as such
 Produced by: the design audit of `docs/DESIGN_AUDIT.md`
+Last owner decisions: 2026-08-12 (OD-1, OD-2, OD-3)
 Governs: how every claim in `docs/01`–`docs/05` must be read
 
 ---
@@ -18,6 +20,7 @@ not the justification. The four statuses are:
 | **DERIVED FROM SPECIFICATION** | The specification does not state it, but it follows from something it does state, with no real freedom left. The derivation is named in `Consequence`. |
 | **ASSUMED BY IMPLEMENTATION** | I chose it. The specification is silent, or asks the question without answering it. **Not approved.** |
 | **OPEN DESIGN DECISION** | The specification names it as a decision to be made, and forbids an agent from making it. Where code exists, it embodies a *proposal*, not a ruling. |
+| **APPROVED — OWNER DECISION** | Decided by the language's owner, with a date. Binding. Where the implementation disagrees, the implementation is wrong, not the decision. |
 
 A separate table at the end lists **implementation choices** — decisions with no
 semantic content, which may be changed without a language decision. The
@@ -32,12 +35,34 @@ feature.
 
 ---
 
+## 0. Approved owner decisions
+
+**2026-08-12 — three decisions taken by the owner.** They are binding and are no
+longer open. Their full engineering consequences are mapped in
+`docs/SEMANTIC_IMPACT_MAP.md`; the rows below are updated to match.
+
+| # | Decision | Effect on the implementation |
+|---|---|---|
+| **OD-1** | A `Fact` is immutable; its identity and value cannot be mutated in place. The language must distinguish at minimum **Fact / Observation / Derived Fact / State**, and no API may semantically behave as `fact.value = new_value` unless it is explicitly a State operation. Provenance must be preserved. | **Confirms** current behaviour; **adds** the four-way distinction, of which two categories (`Observation`, `State`) do not exist. |
+| **OD-2** | `Unknown`, `Null` and `Known(Value)` are three semantically distinct conditions. `Unknown` is absence of information; `Null` is *known* absence of a value; they are distinct from each other and from `false`. The evaluator must not collapse them, and behaviour must be defined for all three across truth evaluation, comparison, logical operators and rule activation. | **Contradicts** the implementation: `Null` does not exist, and `docs/04` §2 removed it deliberately. The trace's JSON currently writes `Unknown` as JSON `null`, which collapses two of the three states. |
+| **OD-3** | Incompatible rule conclusions raise an explicit `Conflict` condition. No implicit priority, source order, race winner or last-write-wins. The runtime must report Conflict ID, conflicting rules, conflicting conclusions, relevant facts, relevant conditions, execution context and trace references. Future strategies must be explicit constructs or configuration and must not silently change existing programs. | **Confirms** the direction; the required report is far richer than the current diagnostic, and no strategy seam exists. |
+
+Secondary questions these decisions open — 5 for OD-1, 9 for OD-2, 5 for OD-3 —
+are listed in `docs/SEMANTIC_IMPACT_MAP.md` as `O1.1`–`O3.5`. **None has been
+resolved.** They are added to the open register in this file where they change a
+row's status.
+
+---
+
 ## 1. Facts
 
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
 | A fact binds a name to a value | `fact temperature = 31` binds `temperature` | Master Spec §7 gives exactly these examples | **EXPLICITLY_SPECIFIED** | The one part of the fact model that is settled. |
-| Facts are **immutable** within an execution | A name is bound at most once; no update, no retraction | Master Spec §7 says *"אין להניח שכל Fact הוא mutable. ה־semantic model חייב להגדיר זאת במפורש"* — it requires an explicit decision and does not make one | **ASSUMED BY IMPLEMENTATION** | Load-bearing for nearly everything else: monotonicity, the fixed point, termination without cycle detection, and the conflict rule all rest on it. If mutability is approved, the inference engine is redesigned, not patched. |
+| Facts are **immutable** within an execution | A name is bound at most once; no update, no retraction | **OD-1, 2026-08-12.** Master Spec §7 required an explicit decision; the owner has now made it | **APPROVED — OWNER DECISION** | Settled. Monotonicity, the fixed point, termination without cycle detection and "fires at most once" all rest on this and are now on solid ground. |
+| The language distinguishes **Fact / Observation / Derived Fact / State** | Only two categories exist: `Origin::Declared`, `Origin::Derived(RuleId)` | **OD-1** | **APPROVED — OWNER DECISION; NOT IMPLEMENTED** | `Observation` and `State` are absent. Their representation is to be specified separately (O1.1, O1.2), so the enum has deliberately *not* been widened — a half-built vocabulary is what the audit criticised. |
+| Provenance is preserved for anything derived or observed | Derived: `Origin::Derived`, `FactDerived`, `why`. Observed: nothing exists | **OD-1** | **APPROVED — OWNER DECISION; partially implemented** | Derived provenance holds. Observed provenance is blocked on O1.1. |
+| No API semantically equal to `fact.value = new_value` | `FactSet::insert` never overwrites; but `Fact.value` is a public field | **OD-1** | **APPROVED — OWNER DECISION; holds, with risk R1** | No mutation is reachable through the public API. The public field is weaker than the decision deserves — see impact map R1. |
 | Facts are **ground** (no variables, no stored expressions) | `fact a = 1 + 2` stores `3` | Not stated. §7's examples are all ground, which is weak evidence | **ASSUMED BY IMPLEMENTATION** | Blocks relational/Datalog-style facts until decision D of the open register is made. |
 | Facts are **named, not relational**; `user.age` is one atomic name | The dot has no structure | §7 uses `user.age` and `account.status` without saying what the dot means | **ASSUMED BY IMPLEMENTATION** | Will not scale to an enterprise rule base. Flagged as weakness 2 in `OPEN_DESIGN_DECISIONS.md`. |
 | A fact carries its **origin** (declared / derived by rule R) | `Origin::Declared \| Derived(RuleId)` | Derivable from §10, which requires the trace to distinguish loaded from derived facts | **DERIVED FROM SPECIFICATION** | Needed for explanation; low risk. |
@@ -60,16 +85,18 @@ feature.
 
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
-| **`Unknown` is not `false`** | A rule reading an underived name is *pending*, retried next round | **Nothing in the Master Specification.** Supported by the repository convention in `CLAUDE.md` (*"Missing data is `None`, never `0`"*), which governs a different project | **ASSUMED BY IMPLEMENTATION** | The decision the audit was called over, and correctly so. It changes which rules fire and therefore what programs mean. Every alternative (unknown-is-false; three-valued logic with an explicit `unknown` value; failure) yields a different language. |
-| `Unknown` is **not a value** — it is a property of the environment | Cannot be stored, compared, or operated on; no `Null` type | §17 lists `Null` as a **candidate primitive type**, and §17 requires deciding which entities are real types *before implementation* | **ASSUMED BY IMPLEMENTATION**, and it **narrows** an option the specification kept open | If `Null` is approved as a value, `Value`, the operator table, the fact set and the output model all change. |
-| An output nothing derived is `unknown`, not an error and not a default | `status = unknown` | Not specified. §10 requires a Final Result; it does not say what an underivable one is | **ASSUMED BY IMPLEMENTATION** | Observable in every program's output. |
+| **`Unknown` is not `false`** | A rule reading an underived name is *pending*, retried next round | **OD-2, 2026-08-12** | **APPROVED — OWNER DECISION** | Settled, and now stronger than what is implemented: the approved model has *three* conditions, not two. |
+| **`Null` is a distinct, known state** — the system knows there is no value | **Does not exist.** No `Value` variant, no type, no literal, no operator behaviour | **OD-2** | **APPROVED — OWNER DECISION; NOT IMPLEMENTED** | The single largest gap between approved semantics and the engine. Its representation is O2.1, and every operator's behaviour against it is O2.2–O2.4. |
+| The three conditions are never silently collapsed | **Violated once**: the trace JSON writes `Unknown` as JSON `null` | **OD-2 (2d)** | **APPROVED — OWNER DECISION; VIOLATED IN CODE** | `crates/trace/src/json.rs`, `OutputEmitted`. Already wrong under OD-2, independent of how `Null` is finally represented. |
+| `Unknown` is not a value — it is a property of the environment; `Null` is a value | Half-implemented: `Unknown` behaves this way, `Null` is absent | OD-2 implies the asymmetry but does not state it | **OPEN DESIGN DECISION (O2.9)** | Determines whether `Unknown` can be stored in a fact, passed to an operator, or written in source. |
+| An output nothing derived is `unknown` | `status = unknown` | **OD-2** for the distinction; the *spelling* is mine | **APPROVED** (the state) / **OPEN (O2.7)** (how the three are rendered in text, JSON and trace) | Observable in every program's output. |
 | A condition must be of type `Bool`; there is no truthiness | `when 1` is `E3011` | Not specified | **ASSUMED BY IMPLEMENTATION** | Rejects programs the specification never forbade. |
 
 ## 4. Conjunction and disjunction
 
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
-| `and` / `or` **do not short-circuit** over `Unknown` | `false and <unknown>` is `NotEvaluable`, not `false` | Not specified. Follows from `Unknown != false` | **ASSUMED BY IMPLEMENTATION** | Directly changes rule firing. The opposite choice — Kleene three-valued logic, where `false and unknown = false` — is at least as defensible and is what SQL does. **I did not present this alternative before implementing.** |
+| `and` / `or` **do not short-circuit** over `Unknown` | `false and <unknown>` is `NotEvaluable`, not `false` | Not specified. Followed from `Unknown != false`, which OD-2 has now approved — but OD-2 requires behaviour to be defined for **all three** states, and the current two-state behaviour is not that definition | **OPEN DESIGN DECISION (O2.4)** | A full truth table for `and`, `or` and `not` over `true`/`false`/`Null`/`Unknown` is required. Kleene three-valued logic remains a live alternative. Unresolved. |
 | `and`/`or` are left-associative, `or` looser than `and` | Standard precedence | Not specified; conventional | **ASSUMED BY IMPLEMENTATION** | Low risk, but it is syntax, and syntax is open (§54). |
 | Comparison does not chain (`a < b < c` is `E2005`) | Rejected with a suggestion | Not specified | **ASSUMED BY IMPLEMENTATION** | Low risk. |
 
@@ -77,8 +104,11 @@ feature.
 
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
-| Two rules deriving **different** values for one name is an error (`E4001`) | Execution stops | §23 lists six options — priority, specificity, explicit ordering, **conflict error**, multi-result, custom — and states *"אין לבחור אחת לפני Design Review"* | **OPEN DESIGN DECISION** | `docs/01` §4 claimed *"This **is** that review"*. It was not: a design review is an act of the owner, not of the agent performing the work. The claim is withdrawn by this audit. The behaviour remains in code as a proposal. |
-| Two rules deriving the **same** value is not a conflict | Recorded as `DerivationRedundant` | Not specified | **ASSUMED BY IMPLEMENTATION** | Follows from the above; falls with it. |
+| Incompatible conclusions raise an explicit `Conflict`; no implicit resolution | `E4001`, execution stops | **OD-3, 2026-08-12** — the §23 design review has now happened | **APPROVED — OWNER DECISION** | Settled in direction. |
+| The conflict report carries id, rules, conclusions, relevant facts, relevant conditions, execution context, trace references | Carries rules, values and a span only | **OD-3 (3c)** | **APPROVED — OWNER DECISION; PARTIALLY IMPLEMENTED** | Five of seven required elements are missing. |
+| Whether a `Conflict` is fatal | Execution stops at the first one | OD-3 says execution "enters a Conflict condition"; it does not say whether the run ends | **OPEN DESIGN DECISION (O3.1, O3.2)** | Determines whether one run can report several conflicts. |
+| What counts as "logically incompatible" | Equal values ⇒ `DerivationRedundant`; different ⇒ conflict | OD-3's wording supports the equal-value case; `Null` vs `Known` is undefined | **APPROVED** (equal values are not a conflict) / **OPEN (O3.3)** (`Null` cases) | — |
+| Future strategies are explicit, and never silently change existing programs | No strategy mechanism exists | **OD-3 (3d)** | **APPROVED — OWNER DECISION; NOT IMPLEMENTED** | The seam is one match arm; where a strategy is *selected* is O3.5. |
 | A rule may not derive a name a `fact` declares (`E3004`) | Rejected statically | Not specified | **ASSUMED BY IMPLEMENTATION** | Depends on fact immutability. |
 
 ## 6. Rule ordering and scheduling
@@ -159,7 +189,7 @@ feature.
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
 | The language is typed | Yes | §17: *"המערכת צריכה להיות typed"* | **EXPLICITLY_SPECIFIED** | Settled. |
-| Exactly four types: `Int`, `Float`, `Bool`, `String` | Closed set | §17 lists eight candidate primitives (including `Null`, `List`, `Map`, `Record`) and requires a decision before implementation | **OPEN DESIGN DECISION** — my four are a proposal | The subset is defensible for a slice, but §17 asked for a ruling and I supplied one. |
+| Exactly four types: `Int`, `Float`, `Bool`, `String` | Closed set | §17 lists eight candidate primitives and requires a decision before implementation. **OD-2 has now added `Null` to the language**, but not said where it sits in the type lattice | **OPEN DESIGN DECISION (O2.1)** — and the four-type set is now known to be incomplete | Is `Null` an inhabitant of every type (SQL-style), its own type, or a nullability modifier? Each answer is a different type system. |
 | Types are **static, inferred, monomorphic**; no annotations | Inference from defining expression | §54 lists *Type System Details* as open | **OPEN DESIGN DECISION** | Affects every future extension. |
 | **No implicit conversion**, in particular `Int`/`Float` | `1 + 1.0` is `E3012` | Not specified | **ASSUMED BY IMPLEMENTATION** | Rejects programs many users would expect to work. Defensible, unapproved. |
 | Cross-type equality is a **type error**, not `false` | `1 == 1.0` is `E3012` | Not specified | **ASSUMED BY IMPLEMENTATION** | Same. |
@@ -209,12 +239,17 @@ that promotes them. The distinction is exactly §3 of the audit brief.
 
 ## Summary of counts
 
-| Status | Count |
-|---|---|
-| EXPLICITLY_SPECIFIED | 8 |
-| DERIVED FROM SPECIFICATION | 6 |
-| **ASSUMED BY IMPLEMENTATION** | **31** |
-| **OPEN DESIGN DECISION** | **13** |
+| Status | Count | Change since the audit |
+|---|---|---|
+| **APPROVED — OWNER DECISION** | **11 rows** | new (OD-1, OD-2, OD-3) |
+| EXPLICITLY_SPECIFIED | 8 | — |
+| DERIVED FROM SPECIFICATION | 6 | — |
+| **ASSUMED BY IMPLEMENTATION** | **24** | 7 rows promoted to APPROVED |
+| **OPEN DESIGN DECISION** | **13 + 19 new sub-decisions** | O1.1–O1.5, O2.1–O2.9, O3.1–O3.5, listed in the impact map |
+
+Three decisions closed; nineteen opened beneath them. That is the normal shape of
+a real semantic decision — settling *what* `Null` is raises every question about
+how it behaves — and it is why the impact map exists before any code moves.
 
 Thirty-one assumptions and thirteen decisions the specification reserved for its
 owner are embedded in working, tested code. The tests prove the engine does what

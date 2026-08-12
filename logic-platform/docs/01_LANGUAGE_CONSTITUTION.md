@@ -93,7 +93,19 @@ parses is worse than one that does not exist.
 
 ## 3. The entities
 
-### 3.1 Fact — *decided*
+### 3.1 Fact — **APPROVED (owner decision OD-1, 2026-08-12)**
+
+> **OD-1.** A `Fact` is immutable: once it exists, its logical identity and value
+> cannot be mutated in place, and a later observation or computation does not
+> overwrite it. The language must distinguish at minimum **`Fact`**,
+> **`Observation`**, **`Derived Fact`** and **`State`**. No API may semantically
+> behave as `fact.value = new_value` unless that operation is explicitly a State
+> operation. Provenance is preserved.
+>
+> **Implemented:** immutability, and two of the four categories (`Fact` as a
+> declaration, `Derived Fact`). **Not implemented:** `Observation` and `State`,
+> whose representation is to be specified separately — O1.1 and O1.2 in
+> `docs/SEMANTIC_IMPACT_MAP.md`. They are absent rather than stubbed.
 
 > A **fact** is a typed, ground, immutable binding of a **name** to a **value**,
 > valid for the duration of one execution.
@@ -102,7 +114,7 @@ parses is worse than one that does not exist.
 - **Ground**: a fact contains no variables and no unevaluated expression. `fact
   a = 1 + 2` stores the value `3`; the expression is not retained as a fact.
 - **Immutable**: within one execution a name is bound at most once. There is no
-  assignment, no update, no retraction in 0.1.
+  assignment, no update, no retraction. *(Approved: OD-1.)*
 - **Named, not relational**: a fact name is an atomic dotted identifier
   (`temperature`, `user.age`, `account.status`). The dot is part of the name and
   carries no structural meaning in 0.1 — `user.age` is *not* field access on
@@ -116,10 +128,8 @@ Facts have an **origin**, which is part of the fact and appears in the trace:
 | `Derived { rule }` | the `then` clause of a rule that fired |
 
 Rejected alternatives, and why:
-- *Fact as mutable state* — destroys monotonicity, makes the fixed point
-  order-dependent, and makes explanation ambiguous ("which value did rule R
-  see?"). Mutability is deferred to the state model (§3.5), where it can be given
-  explicit semantics instead of arriving by accident.
+- *Fact as mutable state* — **rejected by OD-1.** Mutation belongs to the State
+  model (§3.5), which is a separate specification, not to facts.
 - *Fact as a relation / tuple* (Datalog style) — strictly more expressive and
   almost certainly the right 0.3 answer, but it requires unification, variable
   binding and a join strategy, none of which are specified yet. Adding it later
@@ -139,8 +149,10 @@ Rejected alternatives, and why:
   because it makes the trace finite and readable.)
 - A rule's condition is evaluated only when **every** name it reads is known.
   A rule that reads an unknown name is *not* false — it is **not yet
-  evaluable**, and is retried on the next inference round. This is the single
-  most important rule in the language: **unknown is not false.**
+  evaluable**, and is retried on the next inference round: **unknown is not
+  false** *(approved: OD-2)*. What happens when a rule reads a name bound to
+  `Null` — a *known* absence — is **OPEN DESIGN DECISION O2.5**, and the
+  implementation cannot express the question yet.
 - A rule that is never evaluable simply never fires. That is not an error. It is
   reported in the trace as `RuleNeverEvaluated` with the names it was waiting for.
 
@@ -172,7 +184,7 @@ Because facts are immutable and the rule set is finite, the fixed point exists
 and is unique, and the iteration terminates in at most *R* rounds for *R* rules.
 A round limit still exists as a defensive constant (§03), not as semantics.
 
-### 3.5 State — *OPEN DESIGN DECISION*
+### 3.5 State — *OPEN DESIGN DECISION* (its existence as a distinct category is approved by OD-1; its representation is not)
 
 0.1 has **no mutable state**. The Master Specification (§11) requires that
 `INPUT`, `FACT`, `DERIVED FACT`, `STATE` and `OUTPUT` be distinguished; 0.1
@@ -207,13 +219,24 @@ The Master Specification §23 lists priority, specificity, explicit ordering,
 error, multi-result and custom strategies, and forbids choosing before a design
 review.
 
-> **WITHDRAWN.** This document previously claimed *"This **is** that review."*
-> It was not: a design review is an act of the language's owner, and an agent
-> cannot convene one over its own proposal. The behaviour below stands in code
-> as a **proposal**, and the decision is OPEN
-> (`docs/SEMANTIC_DECISION_REGISTER.md` §5).
+> **WITHDRAWN, then decided.** This document previously claimed *"This **is**
+> that review"*, which it was not. The review has since taken place:
+>
+> **OD-3 (2026-08-12) — APPROVED.** Incompatible conclusions raise an explicit
+> `Conflict` condition. `Conflict` is **not** priority, source order, race
+> winner, or last-write-wins. The runtime must report Conflict ID, conflicting
+> rules, conflicting conclusions, relevant facts, relevant conditions, execution
+> context and trace references — of which the current `E4001` diagnostic
+> provides the rules, the conclusions and a source span only. Future strategies
+> (priority, specificity, first-match, all-results, custom) must be explicit
+> constructs or configuration, and must not silently change the meaning of
+> existing programs.
+>
+> Still open beneath it: whether a conflict is fatal (O3.1), whether a run can
+> report several (O3.2), what counts as incompatible once `Null` exists (O3.3),
+> the form of a Conflict ID (O3.4), and where a strategy is selected (O3.5).
 
-The reasoning offered in support of the proposal:
+The reasoning originally offered, now superseded by the decision above:
 
 - Any silent winner (priority, source order, specificity) makes the language's
   answer depend on something the author did not write down. That violates §1.3.

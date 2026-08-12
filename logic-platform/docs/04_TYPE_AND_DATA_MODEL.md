@@ -36,15 +36,24 @@ in turn keeps the fact set a well-defined map and comparison sound.
 
 ## 2. What is *not* a type in 0.1
 
-`Null`, `List`, `Map`, `Record`, `Set`, `Tuple`, `Enum`, `Option`, `Result`,
-`Fact`, `Rule`, `Query`, `State`. The Master Specification §17 lists these as
+`List`, `Map`, `Record`, `Set`, `Tuple`, `Enum`, `Option`, `Result`, `Fact`,
+`Rule`, `Query`, `State`. The Master Specification §17 lists these as
 *candidates* and requires a decision before implementation. None is decided, so
 none exists. There is no partially working list type.
 
-`Null` deserves its own note: it is **deliberately absent**, and its job is done
-by `Unknown` (§4), which is not a value and cannot be stored in a fact or
-compared. The distinction is the whole of the `None`-not-`0` discipline: absence
-is a property of the *environment*, not an inhabitant of a type.
+**`Null` is no longer in that list.** This section previously argued that `Null`
+was *"deliberately absent"* because `Unknown` did its job. **OD-2 (2026-08-12)
+overrules that:**
+
+> `Unknown`, `Null` and `Known(Value)` are three semantically distinct
+> conditions. `Unknown` is absence of *information*; `Null` is *known* absence of
+> a *value* — a known logical state, not a lack of knowledge.
+> `Unknown ≠ Null ≠ false`.
+
+`Null` is therefore part of the language and **is not implemented**. Where it
+sits — an inhabitant of every type (SQL-style), its own type, or a nullability
+modifier — is **OPEN DESIGN DECISION O2.1**, and it gates the operator table
+(§5), equality (§6) and the output model. See `docs/SEMANTIC_IMPACT_MAP.md` §2.2.
 
 ## 3. Type discipline
 
@@ -56,7 +65,19 @@ is a property of the *environment*, not an inhabitant of a type.
 - **No conversion, implicit or explicit.** There is no `int(x)`, because there
   are no functions. `1 + 1.0` does not compile.
 
-## 4. `Unknown`
+## 4. `Unknown` — and its relationship to `Null`
+
+Under OD-2 there are three conditions, of which this document implements two:
+
+| Condition | Meaning | Implemented |
+|---|---|---|
+| `Known(Value)` | a concrete value is known | yes |
+| `Unknown` | not enough information to determine a value | yes |
+| `Null` | known that there is no value | **no — see §2** |
+
+Whether `Unknown` remains a non-value while `Null` becomes a value is
+**OPEN DESIGN DECISION O2.9**; OD-2's wording implies that asymmetry but does
+not state it.
 
 `Unknown` is not a value and not a type. It is the state of a name that no rule
 has bound. It arises in exactly two places:
@@ -69,7 +90,9 @@ has bound. It arises in exactly two places:
 
 `Unknown` cannot be compared, stored, or operated on. There is no `is_unknown`
 operator in 0.1 (it would let a program branch on ignorance, and what that means
-is unspecified). It is an **OPEN DESIGN DECISION** for 0.2.
+is unspecified). It is an **OPEN DESIGN DECISION** for 0.2 — as is the
+corresponding question for `Null`, which under OD-2 is a *known* state and might
+reasonably be testable when `Unknown` is not.
 
 ## 5. Operator table
 
@@ -147,7 +170,12 @@ Phase 6, **not** as an implemented mapping:
 | `String` | `TEXT` | `TEXT` |
 | `Unknown` | `NULL` | `NULL` |
 
-SQL `NULL` maps to `Unknown` — absence of a fact — rather than to a value. That
-correspondence is why `Null` was not made a value type: the two models line up
-exactly, and three-valued SQL logic can be expressed by the pending/`NotEvaluable`
-mechanism that already exists.
+| `Null` | `NULL` | `NULL` | — see below |
+
+**This mapping is now contradicted by OD-2 and is withdrawn as a decision.** It
+previously read *"SQL `NULL` maps to `Unknown`"*, and used that correspondence to
+argue `Null` was unnecessary. With `Unknown` and `Null` semantically distinct,
+which of them a SQL `NULL` becomes is **OPEN DESIGN DECISION O2.8**: a column
+that *is* `NULL` is known to hold no value, which argues for `Null`; a row never
+fetched is `Unknown`. The data layer must be able to produce both, and Phase 6
+must not begin until this is decided.

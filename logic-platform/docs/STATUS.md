@@ -20,6 +20,12 @@ Nothing below is marked VERIFIED because it "looked right".
 > Master Specification. The tests prove the engine does what `docs/01`–`docs/05`
 > say; they cannot prove those documents say the right thing. Per-decision
 > provenance is in `docs/SEMANTIC_DECISION_REGISTER.md`.
+>
+> **Since 2026-08-12 the engine also diverges from *approved* semantics.**
+> Owner decision OD-2 makes `Unknown`, `Null` and `Known(Value)` three distinct
+> conditions; the implementation has two, and no `Null`. Every row below that
+> touches values, types, evaluation or output is therefore VERIFIED against a
+> model that is now known to be incomplete. See `docs/SEMANTIC_IMPACT_MAP.md`.
 
 ---
 

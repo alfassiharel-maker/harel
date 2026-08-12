@@ -215,6 +215,8 @@ eval(not a, F)            = NotEvaluable            if eval(a,F) is NotEvaluable
 
 `and` and `or` are **not** short-circuiting with respect to `NotEvaluable`:
 `false and x` where `x` is unknown is `NotEvaluable`, not `false`. **[T]**
+*(The corresponding rule for `Null` — and therefore the full truth table over
+`true`/`false`/`Null`/`Unknown` — is **OPEN DESIGN DECISION O2.4**.)*
 *Rationale:* short-circuiting would make a rule's firing depend on the textual
 order of its conjuncts, which is exactly the kind of hidden dependence §1.3 of
 the Constitution forbids. Once every name is known, `and`/`or` are ordinary
@@ -232,6 +234,11 @@ error (no `NaN`, no wrapping, no silent truncation):
 
 ### 4.2 Rule application
 
+> **OPEN DESIGN DECISION O2.5.** Under OD-2, a name bound to `Null` is *known*.
+> Whether that makes a rule reading it **evaluable** — and what its condition
+> then evaluates to — is undecided. The rule below is the two-state form and is
+> incomplete.
+
 A rule `r` is **evaluable** under `F` when every name it reads is in `dom(F)`.
 A rule **fires** when it is evaluable, has not previously fired, and its
 condition evaluates to `true`.
@@ -242,8 +249,14 @@ Firing `r` evaluates each `then` clause in source order and adds each binding:
 add(F, n, v, r):
   n ∉ dom(F)                 ⇒ F ∪ { n ↦ (v, Derived r) }
   F(n) = (v, _)              ⇒ F                       (redundant; traced)
-  F(n) = (w, _), w ≠ v       ⇒ E4001 ConflictingDerivation
+  F(n) = (w, _), w ≠ v       ⇒ Conflict                (OD-3; today: E4001)
 ```
+
+**OD-3 (2026-08-12) — APPROVED.** The third case is an explicit `Conflict`
+condition, never an implicit resolution. The report it must carry is listed in
+`01_LANGUAGE_CONSTITUTION.md` §4; the current `E4001` diagnostic supplies three
+of the seven required elements. Whether `Conflict` halts the execution is
+**OPEN DESIGN DECISION O3.1**, so the line above deliberately does not say.
 
 A `then` clause whose expression is `NotEvaluable` at firing time is impossible:
 reads are collected over the whole rule, condition and consequences alike, so an
@@ -285,7 +298,9 @@ what they were waiting for.
 
 An execution produces exactly:
 
-1. `outputs`: an ordered list of `(name, Known(value) | Unknown)`;
+1. `outputs`: an ordered list of `(name, Known(value) | Unknown)` — **incomplete
+   under OD-2**, which requires a third case, `Null`. How the three are rendered
+   in text, JSON and the trace is **OPEN DESIGN DECISION O2.7**;
 2. `facts`: the final environment with origins, in name order;
 3. `trace`: the event sequence (`03_EXECUTION_MODEL.md` §7);
 4. or a single structured error, in which case a partial trace is still produced

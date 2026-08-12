@@ -194,6 +194,33 @@ run(ir, limits) -> ExecutionResult:
 Note what is *not* here: no timing, no allocation of a thread, no I/O, no
 environment access. The runtime is a pure function of `(IrProgram, Limits)`.
 
+## 6a. Conflicts — OD-3
+
+**OD-3 (2026-08-12) — APPROVED.** When two rules reach incompatible conclusions
+for one name, execution enters an explicit `Conflict` condition. The runtime
+must report:
+
+```
+Conflict ID
+Conflicting Rules
+Conflicting Conclusions
+Relevant Facts
+Relevant Conditions
+Execution Context
+Trace References
+```
+
+**Implemented today:** conflicting rules, conflicting conclusions, and a source
+span, inside an `E4001` diagnostic. **Missing:** conflict id, relevant facts,
+relevant conditions, execution context, trace references — five of seven.
+
+The core must never resolve a conflict implicitly. Future strategies (priority,
+specificity, first-match, all-results, custom) must be explicit language
+constructs or configuration, and must not silently change the meaning of an
+existing program. No such mechanism exists yet; where a strategy would be
+*selected* is **OPEN DESIGN DECISION O3.5**, and whether a conflict is fatal is
+**O3.1**.
+
 ## 7. Trace
 
 The trace is a **structured event log**, not logging (Engineering Spec §21).
@@ -224,6 +251,10 @@ Event kinds in 0.1:
 | `OutputEmitted` | `name`, `Known(value)` or `Unknown` |
 | `ExecutionFinished` | `rounds`, `facts_total`, `rules_fired` |
 | `ErrorRaised` | `code`, `message`, `span` |
+
+A `Conflict` event carrying the seven elements of §6a does not exist yet; today
+a conflict appears only as `ErrorRaised E4001`, which cannot carry them. Adding
+it is required by OD-3 and is blocked only on the Conflict ID's form (O3.4).
 
 `program_digest` is a SHA-256 over the canonical IR text. Two runs of the same
 program produce the same digest, so a trace can be checked against the program it

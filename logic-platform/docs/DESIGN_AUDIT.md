@@ -4,6 +4,10 @@ Date of audit: 2026-08-12
 Scope: the whole `logic-platform/` tree, at commit `b048d74`
 Trigger: a design audit ordered before any further subsystem is implemented
 Outcome: **implementation halted; no code changed by this audit**
+Update 2026-08-12: **three of the open decisions have been decided by the owner
+(OD-1, OD-2, OD-3).** Their consequences are mapped in
+`docs/SEMANTIC_IMPACT_MAP.md`; §1 and §12 below are amended accordingly. Still
+no code has been changed.
 
 ---
 
@@ -34,7 +38,21 @@ approved.
 
 ## 1. What is formally decided
 
-Traceable to the Master Specification, quoted in the register:
+### 1a. Decided by the owner — 2026-08-12
+
+| # | Decision | Relationship to the code |
+|---|---|---|
+| **OD-1** | Facts are immutable; the language distinguishes Fact / Observation / Derived Fact / State; no `fact.value = new_value` API; provenance preserved | Confirms the implementation; `Observation` and `State` do not exist |
+| **OD-2** | `Unknown`, `Null` and `Known(Value)` are three distinct conditions, never silently collapsed | **Contradicts** the implementation: `Null` does not exist, and the trace JSON writes `Unknown` as `null` |
+| **OD-3** | Explicit `Conflict` condition, no implicit resolution, with a seven-element report; future strategies explicit only | Confirms the direction; five of the seven report elements are missing |
+
+Nineteen secondary questions follow from these three (O1.1–O3.5 in the impact
+map). **None has been resolved**, per the instruction not to settle secondary
+ambiguity discovered during this work.
+
+### 1b. Traceable to the Master Specification
+
+Quoted in the register:
 
 | Decision | Source |
 |---|---|
@@ -267,16 +285,27 @@ C1–C7, G1 and D1–D3 are **reported and left in place**, per the audit order.
 
 ## 12. What is needed from the owner
 
-The register is the agenda. In priority order, because later decisions depend on
-earlier ones:
+Items 1–3 of the original list were answered on 2026-08-12 as OD-1, OD-2 and
+OD-3. What those answers opened, and what was already open, in priority order:
 
-1. **Fact mutability** (register §1). Everything else rests on it.
-2. **`Unknown` semantics** (§3, §4): pending-vs-false, and whether `Null` is a value. This settles the `and`/`or` question with it.
-3. **Conflict resolution** (§5): the §23 design review that has not happened. My proposal is `error`, on the grounds that it is the only option forward-compatible with all the others — but it is a proposal.
-4. **Inference strategy and unit of execution** (§7), which gate any future `query`.
-5. **Type system details** (§15): the four types, and no implicit conversion.
-6. **Whether the trace is a correctness criterion** (§13), and C1.
-7. **Syntax and the language name** (§17), which can be answered last: the IR insulates the engine from them.
+**Opened by the new decisions** — these gate any implementation of them:
 
-Until 1–3 are answered, further language implementation would add more code
-resting on assumptions, which is the failure mode this audit exists to stop.
+1. **O2.1 — where `Null` sits in the type system.** Inhabitant of every type, its own type, or a nullability modifier. Gates O2.2–O2.4 and everything in impact map §2.2.
+2. **O2.5 — is a rule reading a `Null` evaluable?** Determines which rules fire, and therefore what programs mean.
+3. **O2.4 — the truth table** over `true`/`false`/`Null`/`Unknown` for `and`, `or`, `not`.
+4. **O2.7 — how the three conditions are spelled** in plain text, JSON and the trace. Required before the JSON `null` collision (2d) can be fixed.
+5. **O3.1 — is a `Conflict` fatal?** With O3.2 (one conflict per run, or many).
+6. **O1.1, O1.2 — what an `Observation` and a `State` are.** Until these exist, `Origin` stays at two of four categories.
+7. **O2.8 — does SQL `NULL` become `Null` or `Unknown`?** Blocks Phase 6.
+8. Remaining: O1.3–O1.5, O2.2, O2.3, O2.6, O2.9, O3.3, O3.4, O3.5.
+
+**Already open, unchanged by these decisions:**
+
+9. **Inference strategy and unit of execution** (register §7), which gate any future `query`.
+10. **The rest of the type system** (§15): the four base types, and no implicit conversion.
+11. **Whether the trace is a correctness criterion** (§13), and contradiction C1.
+12. **Syntax and the language name** (§17), which can be answered last: the IR insulates the engine from them.
+
+Nothing in `crates/` may change on account of OD-1, OD-2 or OD-3 until at least
+O2.1, O2.5 and O2.7 are settled — implementing `Null` without them would repeat
+the exact failure this audit exists to stop.
