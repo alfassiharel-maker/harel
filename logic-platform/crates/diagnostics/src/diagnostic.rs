@@ -26,6 +26,10 @@ pub struct Diagnostic {
     pub message: String,
     /// Related locations.
     pub labels: Vec<Label>,
+    /// What produced the error, when that is a different thing from what the
+    /// message states — the value that was `null`, the operator that rejected
+    /// it, the rule that was running. Required by Master Spec §25.
+    pub cause: Option<String>,
     /// What the author could do about it, if that is knowable.
     pub help: Option<String>,
 }
@@ -39,6 +43,7 @@ impl Diagnostic {
             span,
             message: message.into(),
             labels: Vec::new(),
+            cause: None,
             help: None,
         }
     }
@@ -50,6 +55,13 @@ impl Diagnostic {
             span,
             message: message.into(),
         });
+        self
+    }
+
+    /// Attach the cause — the state of the world that produced the error.
+    #[must_use]
+    pub fn with_cause(mut self, cause: impl Into<String>) -> Self {
+        self.cause = Some(cause.into());
         self
     }
 
@@ -75,6 +87,9 @@ impl Diagnostic {
                 "\n  {path}:{}:{}: {}",
                 at.line, at.column, label.message
             ));
+        }
+        if let Some(cause) = &self.cause {
+            out.push_str(&format!("\n  cause: {cause}"));
         }
         if let Some(help) = &self.help {
             out.push_str(&format!("\n  help: {help}"));

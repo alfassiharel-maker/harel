@@ -134,37 +134,23 @@ fn rejected(source: &str, path: &str, diagnostics: &Diagnostics) -> Report {
     Report::rejected(format!("{}\n", diagnostics.render(source, path)))
 }
 
-/// The outputs as JSON, with values tagged by type.
+/// The outputs as JSON.
+///
+/// Values are encoded by `lml_trace::json_value`, the one place that knows how
+/// a value becomes JSON. The CLI had its own copy; two encodings of one thing
+/// can drift, and after owner instruction §9 they would drift on exactly the
+/// distinction that matters. (Audit finding: CLI boundary drift.)
 fn outputs_json(execution: &Execution) -> String {
     let entries: Vec<String> = execution
         .outputs
         .iter()
-        .map(|output| match &output.value {
-            lml_trace::Emitted::Known(value) => {
-                format!(
-                    "{{\"name\":\"{}\",\"value\":{}}}",
-                    output.name,
-                    json_scalar(value)
-                )
-            }
-            lml_trace::Emitted::Unknown => {
-                format!("{{\"name\":\"{}\",\"value\":null}}", output.name)
-            }
+        .map(|output| {
+            format!(
+                "{{\"name\":{},\"value\":{}}}",
+                lml_trace::json_string(&output.name),
+                lml_trace::json_value(&output.value)
+            )
         })
         .collect();
     format!("{{\"outputs\":[{}]}}", entries.join(","))
-}
-
-fn json_scalar(value: &lml_types::Value) -> String {
-    match value {
-        lml_types::Value::Int(number) => format!("{{\"type\":\"Int\",\"value\":{number}}}"),
-        lml_types::Value::Float(number) => format!("{{\"type\":\"Float\",\"value\":{number:?}}}"),
-        lml_types::Value::Bool(boolean) => format!("{{\"type\":\"Bool\",\"value\":{boolean}}}"),
-        lml_types::Value::Str(text) => {
-            format!(
-                "{{\"type\":\"String\",\"value\":{}}}",
-                lml_ast::print_string(text)
-            )
-        }
-    }
 }

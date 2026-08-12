@@ -12,7 +12,7 @@ mod name;
 mod print;
 mod program;
 
-pub use expr::{BinaryOp, Expr, Literal, UnaryOp};
+pub use expr::{BinaryOp, Expr, Literal, StateTest, UnaryOp};
 pub use name::{Name, MAX_NAME_LENGTH};
 pub use print::{print_expr, print_literal, print_program, print_string};
 pub use program::{Effect, FactDecl, Item, OutputDecl, Program, RuleDecl};

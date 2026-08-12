@@ -1,22 +1,22 @@
-//! Types and operator typing.
+//! Types, values, and operator typing.
 //!
-//! This crate answers one question — *what type does this produce?* — and never
-//! computes a value. It is the single source of the operator table in
-//! `docs/04_TYPE_AND_DATA_MODEL.md` §5; the evaluator in `lml-logic`
-//! implements exactly the combinations `binary_result` accepts, and a test in
-//! that crate checks the two agree.
+//! This crate answers *what type does this produce?* and holds the value model
+//! it produces values in. It never evaluates. It is the single source of the
+//! operator table in `docs/04_TYPE_AND_DATA_MODEL.md` §5; the evaluator in
+//! `lml-logic` implements exactly the combinations `binary_result` accepts, and
+//! a test there checks the two agree.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 mod value;
 
-pub use value::Value;
+pub use value::{Known, Value};
 
 use core::fmt;
 use lml_ast::{BinaryOp, Literal, UnaryOp};
 
-/// The types of LML 0.1. The set is closed: `docs/04_TYPE_AND_DATA_MODEL.md` §2
+/// The types of LML. The set is closed: `docs/04_TYPE_AND_DATA_MODEL.md` §2
 /// lists what is deliberately absent and why.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type {
@@ -28,6 +28,13 @@ pub enum Type {
     Bool,
     /// UTF-8 text.
     String,
+    /// The type of the `null` literal: a *known absence*.
+    ///
+    /// `Null` is not a nullability modifier — there is no `Int?`, per owner
+    /// decision O2.1. It is the type of one literal, and it [unifies](Type::unify)
+    /// with every other type so that a name written by one rule as `null` and by
+    /// another as an `Int` has a single, useful type.
+    Null,
 }
 
 impl Type {
@@ -39,6 +46,7 @@ impl Type {
             Self::Float => "Float",
             Self::Bool => "Bool",
             Self::String => "String",
+            Self::Null => "Null",
         }
     }
 
@@ -49,9 +57,30 @@ impl Type {
     }
 
     /// Whether `<`, `<=`, `>`, `>=` are defined on the type.
+    ///
+    /// `Null` is not ordered: it records existence, not magnitude
+    /// (`docs/VALUE_AND_LOGIC_TRUTH_TABLE.md` §6).
     #[must_use]
     pub const fn is_ordered(self) -> bool {
         matches!(self, Self::Int | Self::Float | Self::String)
+    }
+
+    /// The single type covering both, if there is one.
+    ///
+    /// `Null` unifies with everything, because a name that is sometimes absent
+    /// and sometimes an `Int` is an `Int` that can be absent — which is exactly
+    /// what the three-state value model expresses. Two different concrete types
+    /// do not unify; that is `E3010`.
+    #[must_use]
+    pub const fn unify(self, other: Self) -> Option<Self> {
+        match (self, other) {
+            (Self::Null, ty) | (ty, Self::Null) => Some(ty),
+            (Self::Int, Self::Int) => Some(Self::Int),
+            (Self::Float, Self::Float) => Some(Self::Float),
+            (Self::Bool, Self::Bool) => Some(Self::Bool),
+            (Self::String, Self::String) => Some(Self::String),
+            _ => None,
+        }
     }
 }
 
@@ -69,6 +98,7 @@ pub const fn type_of_literal(literal: &Literal) -> Type {
         Literal::Float(_) => Type::Float,
         Literal::Bool(_) => Type::Bool,
         Literal::Str(_) => Type::String,
+        Literal::Null => Type::Null,
     }
 }
 
@@ -87,10 +117,20 @@ pub const fn unary_result(op: UnaryOp, operand: Type) -> Option<Type> {
 /// The result type of an infix operator, or `None` if it is not defined for the
 /// operand types.
 ///
-/// There is no implicit conversion, so both operands must already have the same
-/// type: `1 + 1.0` has no result type (`docs/04_TYPE_AND_DATA_MODEL.md` §3).
+/// The rules, from `docs/VALUE_AND_LOGIC_TRUTH_TABLE.md`:
+///
+/// * `==` and `!=` accept `Null` against anything — asking whether a value is
+///   absent is always a legitimate question, and the answer is a `Bool`;
+/// * ordering, arithmetic and the logical operators reject `Null`, because
+///   absence has no magnitude, no quantity and no truth value;
+/// * otherwise both operands must already have the same type: there is no
+///   implicit conversion, so `1 + 1.0` has no result type.
 #[must_use]
 pub fn binary_result(op: BinaryOp, left: Type, right: Type) -> Option<Type> {
+    // Existence questions are total: `x == null` type-checks whatever `x` is.
+    if matches!(op, BinaryOp::Eq | BinaryOp::Ne) && (left == Type::Null || right == Type::Null) {
+        return Some(Type::Bool);
+    }
     if left != right {
         return None;
     }
@@ -130,11 +170,38 @@ mod tests {
     }
 
     #[test]
-    fn plus_concatenates_strings() {
+    fn equality_accepts_null_against_anything() {
+        // "is this absent?" is always a fair question.
         assert_eq!(
-            binary_result(BinaryOp::Add, Type::String, Type::String),
-            Some(Type::String)
+            binary_result(BinaryOp::Eq, Type::Int, Type::Null),
+            Some(Type::Bool)
         );
+        assert_eq!(
+            binary_result(BinaryOp::Ne, Type::Null, Type::String),
+            Some(Type::Bool)
+        );
+        assert_eq!(
+            binary_result(BinaryOp::Eq, Type::Null, Type::Null),
+            Some(Type::Bool)
+        );
+    }
+
+    #[test]
+    fn null_has_no_magnitude_no_quantity_and_no_truth() {
+        assert_eq!(binary_result(BinaryOp::Lt, Type::Int, Type::Null), None);
+        assert_eq!(binary_result(BinaryOp::Add, Type::Int, Type::Null), None);
+        assert_eq!(binary_result(BinaryOp::And, Type::Bool, Type::Null), None);
+        assert_eq!(unary_result(UnaryOp::Not, Type::Null), None);
+        assert_eq!(unary_result(UnaryOp::Neg, Type::Null), None);
+    }
+
+    #[test]
+    fn null_unifies_with_every_type() {
+        assert_eq!(Type::Null.unify(Type::Int), Some(Type::Int));
+        assert_eq!(Type::Int.unify(Type::Null), Some(Type::Int));
+        assert_eq!(Type::Null.unify(Type::Null), Some(Type::Null));
+        assert_eq!(Type::Int.unify(Type::Int), Some(Type::Int));
+        assert_eq!(Type::Int.unify(Type::String), None);
     }
 
     #[test]

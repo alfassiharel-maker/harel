@@ -5,12 +5,12 @@
 //! Everything else is a rearrangement of what the semantic model already
 //! established.
 
-use lml_ast::{BinaryOp, Expr, Literal, UnaryOp};
+use lml_ast::{BinaryOp, Expr, Literal, StateTest, UnaryOp};
 use lml_diagnostics::{Code, Diagnostic, Diagnostics, Span};
 use lml_ir::{
     ExprCode, IrEffect, IrFact, IrProgram, IrRule, NameId, NameTable, Op, RuleId, IR_VERSION,
 };
-use lml_logic::{eval, Evaluated, FactSet};
+use lml_logic::{eval, FactSet};
 use lml_semantic::SemanticModel;
 use lml_types::{Type, Value};
 
@@ -83,18 +83,20 @@ fn lower_facts(
         // A fact's value is constant (`E3006` rejects anything else), so the
         // empty fact set is enough to evaluate it.
         match eval(&code, &FactSet::new(), fact.value.span()) {
-            Ok(Evaluated::Known(value)) => {
+            // A fact's value is constant (`E3006` rejects anything else), so it
+            // can never evaluate to `Unknown` — that would mean it read a name.
+            Ok(value) if value.is_unknown() => diagnostics.push(Diagnostic::new(
+                Code::InternalInvariant,
+                fact.value.span(),
+                "a fact's value was not constant after the semantic check accepted it",
+            )),
+            Ok(value) => {
                 facts.push(IrFact {
                     name: names.intern(&fact.name.text),
                     value,
                     span: fact.span,
                 });
             }
-            Ok(Evaluated::NotEvaluable) => diagnostics.push(Diagnostic::new(
-                Code::InternalInvariant,
-                fact.value.span(),
-                "a fact's value was not constant after the semantic check accepted it",
-            )),
             Err(diagnostic) => diagnostics.push(diagnostic),
         }
     }
@@ -192,6 +194,14 @@ fn emit(
                 UnaryOp::Not => Op::Not,
             });
         }
+        Expr::Is { operand, test, .. } => {
+            emit(operand, names, ops, diagnostics)?;
+            ops.push(match test {
+                StateTest::Null => Op::IsNull,
+                StateTest::Unknown => Op::IsUnknown,
+                StateTest::Known => Op::IsKnown,
+            });
+        }
         Expr::Binary {
             op, left, right, ..
         } => {
@@ -205,9 +215,10 @@ fn emit(
 
 fn literal_value(literal: &Literal, span: Span, diagnostics: &mut Diagnostics) -> Option<Value> {
     match literal {
-        Literal::Int(value) => Some(Value::Int(*value)),
-        Literal::Bool(value) => Some(Value::Bool(*value)),
-        Literal::Str(value) => Some(Value::Str(value.clone())),
+        Literal::Int(value) => Some(Value::int(*value)),
+        Literal::Bool(value) => Some(Value::bool(*value)),
+        Literal::Str(value) => Some(Value::string(value.clone())),
+        Literal::Null => Some(Value::Null),
         // The lexer rejects a non-finite literal, so this cannot fire from
         // source; it is here because `Value::float` is the only constructor
         // that can establish the invariant.

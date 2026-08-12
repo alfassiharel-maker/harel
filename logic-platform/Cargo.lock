@@ -44,6 +44,7 @@ name = "lml-e2e"
 version = "0.1.0"
 dependencies = [
  "lml-compiler",
+ "lml-ir",
  "lml-runtime",
  "lml-trace",
 ]
@@ -119,7 +120,6 @@ dependencies = [
 name = "lml-trace"
 version = "0.1.0"
 dependencies = [
- "lml-diagnostics",
  "lml-types",
 ]
 

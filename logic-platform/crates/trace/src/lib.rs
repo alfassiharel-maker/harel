@@ -18,7 +18,7 @@ mod json;
 mod trace;
 
 pub use digest::{sha256, sha256_hex};
-pub use event::{Emitted, TraceEvent, TraceEventKind};
+pub use event::{ConditionOutcome, ConflictReport, ConflictSide, TraceEvent, TraceEventKind};
 pub use explain::{why, Explanation};
-pub use json::to_json;
-pub use trace::Trace;
+pub use json::{json_string, json_value, to_json, TRACE_VERSION};
+pub use trace::{Trace, TraceMetadata};

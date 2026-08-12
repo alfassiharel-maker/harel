@@ -13,9 +13,27 @@ Status: **Binding**
 
 ---
 
-## 1. Types in 0.1
+## 0. The value model — owner decision OD-2
 
-Exactly four, and they are closed:
+Every value is in exactly one of three conditions:
+
+```text
+Value
+├── Unknown        not enough information to determine a value
+├── Null           known that there is no value
+└── Known(Known)   a concrete value of one of the four types
+```
+
+`Unknown ≠ Null ≠ false`, and no operator, output format or serialisation may
+collapse them. `Unknown` is a property of the environment — a name nothing has
+bound — and is never stored in the fact set, because absence from the set *is*
+`Unknown`. `Null` is a stored, comparable, first-class state.
+
+Implemented as `lml_types::Value`, with `Known` holding the four types below.
+
+## 1. Types
+
+Exactly four concrete types, and they are closed:
 
 | Type | Domain | Representation |
 |---|---|---|
@@ -41,19 +59,16 @@ in turn keeps the fact set a well-defined map and comparison sound.
 *candidates* and requires a decision before implementation. None is decided, so
 none exists. There is no partially working list type.
 
-**`Null` is no longer in that list.** This section previously argued that `Null`
-was *"deliberately absent"* because `Unknown` did its job. **OD-2 (2026-08-12)
-overrules that:**
+**`Null` is not one of them: it is a state, not a collection type.** This
+section once argued `Null` was *"deliberately absent"* because `Unknown` did its
+job; owner decision OD-2 overruled that, and §0 is the result.
 
-> `Unknown`, `Null` and `Known(Value)` are three semantically distinct
-> conditions. `Unknown` is absence of *information*; `Null` is *known* absence of
-> a *value* — a known logical state, not a lack of knowledge.
-> `Unknown ≠ Null ≠ false`.
-
-`Null` is therefore part of the language and **is not implemented**. Where it
-sits — an inhabitant of every type (SQL-style), its own type, or a nullability
-modifier — is **OPEN DESIGN DECISION O2.1**, and it gates the operator table
-(§5), equality (§6) and the output model. See `docs/SEMANTIC_IMPACT_MAP.md` §2.2.
+`Type::Null` is the type of the `null` literal. It is **not** a nullability
+modifier — there is no `Int?`, per owner decision O2.1 — and it **unifies with
+every other type**: a name one rule derives as `null` and another derives as an
+`Int` has type `Int`, because "an `Int` that can be absent" is precisely what
+the three-state model expresses. Two different concrete types still do not
+unify; that remains `E3010`.
 
 ## 3. Type discipline
 
@@ -67,17 +82,20 @@ modifier — is **OPEN DESIGN DECISION O2.1**, and it gates the operator table
 
 ## 4. `Unknown` — and its relationship to `Null`
 
-Under OD-2 there are three conditions, of which this document implements two:
+| Condition | Meaning | Storable in a fact | Writable in source |
+|---|---|---|---|
+| `Known(v)` | a concrete value | yes | yes |
+| `Null` | known that there is no value | yes | yes — the `null` literal |
+| `Unknown` | not enough information | **no** | **no** |
 
-| Condition | Meaning | Implemented |
-|---|---|---|
-| `Known(Value)` | a concrete value is known | yes |
-| `Unknown` | not enough information to determine a value | yes |
-| `Null` | known that there is no value | **no — see §2** |
+The asymmetry is deliberate and follows from what the two states *are*: `Null`
+is knowledge, so it can be recorded and written down; `Unknown` is the absence
+of knowledge, so recording it would be a second spelling of a name simply not
+being bound. `fact a = unknown` would assert that a value is known to be not
+known, which is a contradiction, and the grammar has no way to write it.
 
-Whether `Unknown` remains a non-value while `Null` becomes a value is
-**OPEN DESIGN DECISION O2.9**; OD-2's wording implies that asymmetry but does
-not state it.
+The three are asked about with the total predicates `x is null`,
+`x is unknown` and `x is known`.
 
 `Unknown` is not a value and not a type. It is the state of a name that no rule
 has bound. It arises in exactly two places:
@@ -88,16 +106,28 @@ has bound. It arises in exactly two places:
 2. **At output** — an output name that was never derived is emitted as
    `Unknown`, and the trace shows which rules were waiting and for what.
 
-`Unknown` cannot be compared, stored, or operated on. There is no `is_unknown`
-operator in 0.1 (it would let a program branch on ignorance, and what that means
-is unspecified). It is an **OPEN DESIGN DECISION** for 0.2 — as is the
-corresponding question for `Null`, which under OD-2 is a *known* state and might
-reasonably be testable when `Unknown` is not.
+`Unknown` cannot be stored or operated on, but it **can** be asked about:
+`x is unknown` answers `true` or `false` and never fails. Letting a program
+branch on its own ignorance was once listed as an open question; the strict
+model of OD-2 makes it a necessity rather than a curiosity, because without it a
+program has no way to cope with the errors `Null` and `Unknown` produce.
 
 ## 5. Operator table
 
 `I`=Int, `F`=Float, `B`=Bool, `S`=String. Any combination not listed is `E3012
 OperatorTypeMismatch`.
+
+The table below is for `Known` operands. The three-state cells — every
+combination involving `Null` or `Unknown` — are in
+`docs/VALUE_AND_LOGIC_TRUTH_TABLE.md`, and in summary:
+
+| | `Null` operand | `Unknown` operand |
+|---|---|---|
+| `==` `!=` | answers: `null == null` is `true`, `null == 5` is `false` | `unknown` |
+| `<` `<=` `>` `>=` | `E5004` — an absence has no magnitude | `unknown` |
+| `+ - * / %`, unary `-` | `E5005` — an absence has no quantity | `unknown` |
+| `and` `or` `not` | `E5006` — an absence has no truth value | `unknown` |
+| `is null` `is unknown` `is known` | answers | answers |
 
 | Operator | Operands | Result | Notes |
 |---|---|---|---|
@@ -123,8 +153,9 @@ the SQL layer about `-7 / 2` would be a permanent source of subtle wrongness.
 
 ## 6. Equality and ordering
 
-- Equality is only defined **within** a type. `1 == 1.0` is `E3012`, not `false`.
-  Cross-type equality that returns `false` hides bugs.
+- Equality is only defined **within** a type, plus `Null` against anything:
+  `1 == 1.0` is `E3012`, not `false`, but `x == null` type-checks for every `x`
+  because "is this absent?" is always a fair question.
 - `Float` equality is bitwise on finite values, which is ordinary IEEE equality
   once `NaN` is excluded. `0.0 == -0.0` is `true`; `-0.0` is normalised to `0.0`
   on construction so that the fact set cannot hold two distinguishable zeroes.
@@ -172,10 +203,8 @@ Phase 6, **not** as an implemented mapping:
 
 | `Null` | `NULL` | `NULL` | — see below |
 
-**This mapping is now contradicted by OD-2 and is withdrawn as a decision.** It
-previously read *"SQL `NULL` maps to `Unknown`"*, and used that correspondence to
-argue `Null` was unnecessary. With `Unknown` and `Null` semantically distinct,
-which of them a SQL `NULL` becomes is **OPEN DESIGN DECISION O2.8**: a column
-that *is* `NULL` is known to hold no value, which argues for `Null`; a row never
-fetched is `Unknown`. The data layer must be able to produce both, and Phase 6
-must not begin until this is decided.
+**Which state a SQL `NULL` becomes is `OPEN DESIGN DECISION O2.8`.** The earlier
+mapping — `NULL` → `Unknown` — was withdrawn when OD-2 made the two distinct. A
+column that *is* `NULL` is known to hold no value, which argues for `Null`; a row
+never fetched is `Unknown`, and the data layer must be able to produce both.
+Phase 6 does not begin until this is decided.

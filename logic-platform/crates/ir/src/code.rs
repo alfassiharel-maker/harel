@@ -27,6 +27,12 @@ pub enum Op {
     /// Push the value bound to a name. Fails as *not evaluable* if the name is
     /// unknown — which is not the same as false (`docs/02_FORMAL_SEMANTICS.md` §4.1).
     Load(NameId),
+    /// Test whether the operand is a known absence. Total: never fails.
+    IsNull,
+    /// Test whether the operand is unknown. Total: never fails.
+    IsUnknown,
+    /// Test whether the operand is a concrete value. Total: never fails.
+    IsKnown,
     /// Arithmetic negation.
     Neg,
     /// Logical negation.
@@ -67,7 +73,7 @@ impl Op {
     pub const fn arity(&self) -> usize {
         match self {
             Self::Const(_) | Self::Load(_) => 0,
-            Self::Neg | Self::Not => 1,
+            Self::Neg | Self::Not | Self::IsNull | Self::IsUnknown | Self::IsKnown => 1,
             Self::Add
             | Self::Sub
             | Self::Mul
@@ -90,6 +96,9 @@ impl Op {
         match self {
             Self::Const(_) => "const",
             Self::Load(_) => "load",
+            Self::IsNull => "is-null",
+            Self::IsUnknown => "is-unknown",
+            Self::IsKnown => "is-known",
             Self::Neg => "neg",
             Self::Not => "not",
             Self::Add => "add",
@@ -176,7 +185,7 @@ mod tests {
     use super::*;
 
     fn int(value: i64) -> Op {
-        Op::Const(Value::Int(value))
+        Op::Const(Value::int(value))
     }
 
     #[test]

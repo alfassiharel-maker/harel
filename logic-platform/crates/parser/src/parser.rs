@@ -10,7 +10,8 @@
 //! declaration keyword, so one run reports every declaration's problems.
 
 use lml_ast::{
-    BinaryOp, Effect, Expr, FactDecl, Item, Literal, Name, OutputDecl, Program, RuleDecl, UnaryOp,
+    BinaryOp, Effect, Expr, FactDecl, Item, Literal, Name, OutputDecl, Program, RuleDecl,
+    StateTest, UnaryOp,
 };
 use lml_diagnostics::{Code, Diagnostic, Diagnostics, Span};
 use lml_lexer::{Token, TokenKind};
@@ -323,6 +324,42 @@ impl<'a> Parser<'a> {
 
     fn comparison(&mut self) -> Parsed<Expr> {
         let left = self.additive()?;
+
+        // `x is null` — an existence predicate. It sits at comparison level
+        // because it answers the same kind of question and, like a comparison,
+        // does not chain: `a is null is known` does not parse.
+        if self.peek() == &TokenKind::Is {
+            self.pos += 1;
+            let span = self.span();
+            let test = match self.peek() {
+                TokenKind::Null => StateTest::Null,
+                TokenKind::Unknown => StateTest::Unknown,
+                TokenKind::Known => StateTest::Known,
+                other => {
+                    let found = other.describe();
+                    return self.fail(
+                        Diagnostic::new(
+                            Code::UnexpectedToken,
+                            span,
+                            format!(
+                                "expected `null`, `unknown` or `known` after `is`, found {found}"
+                            ),
+                        )
+                        .with_help(
+                            "the state predicates are `is null`, `is unknown` and `is known`",
+                        ),
+                    );
+                }
+            };
+            self.pos += 1;
+            let whole = left.span().merge(span);
+            return Ok(Expr::Is {
+                operand: Box::new(left),
+                test,
+                span: whole,
+            });
+        }
+
         let Some(op) = comparison_op(self.peek()) else {
             return Ok(left);
         };
@@ -405,6 +442,7 @@ impl<'a> Parser<'a> {
     fn primary(&mut self) -> Parsed<Expr> {
         let span = self.span();
         let literal = match self.peek().clone() {
+            TokenKind::Null => Some(Literal::Null),
             TokenKind::Int(value) => Some(Literal::Int(value)),
             TokenKind::Float(value) => Some(Literal::Float(value)),
             TokenKind::Bool(value) => Some(Literal::Bool(value)),

@@ -49,6 +49,9 @@ pub fn print_expr(expr: &Expr) -> String {
         Expr::Literal { value, .. } => print_literal(value),
         Expr::Name(name) => name.text.clone(),
         Expr::Unary { op, operand, .. } => format!("({} {})", op.symbol(), print_expr(operand)),
+        Expr::Is { operand, test, .. } => {
+            format!("(is-{} {})", test.keyword(), print_expr(operand))
+        }
         Expr::Binary {
             op, left, right, ..
         } => {
@@ -81,6 +84,7 @@ pub fn print_literal(literal: &Literal) -> String {
         }
         Literal::Bool(value) => value.to_string(),
         Literal::Str(value) => print_string(value),
+        Literal::Null => "null".to_owned(),
     }
 }
 

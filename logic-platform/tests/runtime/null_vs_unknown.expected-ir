@@ -1,0 +1,20 @@
+ir_version 2
+names
+  0 recorded : Null
+  1 note : String
+  2 amount : Int
+facts
+  recorded = null
+rules
+  r0 absent
+    reads recorded
+    when [load recorded; is-null]
+    then note = [const "no value was recorded"]
+  r1 never
+    reads recorded
+    when [load recorded; is-known]
+    then amount = [const 10]
+outputs
+  recorded
+  note
+  amount

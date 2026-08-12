@@ -6,7 +6,6 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-lml-diagnostics = { path = "../diagnostics" }
 lml-types = { path = "../types" }
 
 [lints]

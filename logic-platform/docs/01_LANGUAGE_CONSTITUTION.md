@@ -14,14 +14,13 @@ implemented. Where the Engineering Implementation Spec and this document
 disagree, **this document decides semantics; the engineering spec decides how the
 code is organised.**
 
-> ⚠️ **PROVISIONAL — not approved language semantics.**
-> A design audit (`docs/DESIGN_AUDIT.md`) found that most of the rules in this
-> document were decided by the implementation, not by the specification. Read
-> every rule here together with `docs/SEMANTIC_DECISION_REGISTER.md`, which
-> classifies each one as EXPLICITLY_SPECIFIED, DERIVED, ASSUMED BY
-> IMPLEMENTATION, or OPEN DESIGN DECISION. Anything marked ASSUMED or OPEN is a
-> **proposal awaiting the owner's decision**, regardless of how this document
-> phrases it. The word "decided" below means "decided in code", not "approved".
+> ⚠️ **Mixed status — check the register before relying on any rule here.**
+> Some rules in this document are owner-approved (OD-1, OD-2, OD-3 and the O2
+> follow-ups, marked where they appear); the rest were decided by the
+> implementation. `docs/SEMANTIC_DECISION_REGISTER.md` classifies every one as
+> APPROVED, EXPLICITLY_SPECIFIED, DERIVED, ASSUMED BY IMPLEMENTATION or OPEN
+> DESIGN DECISION. Where a rule is not marked approved, "decided" means "decided
+> in code", not "approved".
 
 ---
 
@@ -61,8 +60,9 @@ convenience, performance, or a feature:
    defect, not a result.
 3. **No invented answers.** Where the specification is silent, the
    implementation raises a structured error or refuses to compile. It never
-   guesses a value. Absence of information is `unknown`, never `0`, never `false`,
-   never `""`.
+   guesses a value. Absence of *information* is `unknown`; a known absence of a
+   *value* is `null`; neither is `0`, `false` or `""`, and neither is the other
+   (owner decision OD-2).
 
 ## 2. Scope of language version 0.1
 
@@ -87,8 +87,8 @@ Result: `status = "hot"`, plus a trace showing that `heat` activated, that its
 condition evaluated true, that `status` was derived by `heat`, and that `status`
 was emitted as output.
 
-**In 0.1 the language has exactly three top-level forms**: `fact`, `rule`,
-`output`. Nothing else parses. This is deliberate — an unimplemented keyword that
+**The language has exactly three top-level forms**: `fact`, `rule`, `output`.
+Nothing else parses. This is deliberate — an unimplemented keyword that
 parses is worse than one that does not exist.
 
 ## 3. The entities
@@ -158,9 +158,23 @@ Rejected alternatives, and why:
 
 ### 3.3 Condition — *decided*
 
-A condition is a total, side-effect-free expression over known facts and
-literals, of type `Bool` (§04). It is checked statically: a condition whose type
-is not `Bool` is a semantic error at compile time, never a runtime surprise.
+A condition is a side-effect-free expression over the facts and literals, of
+type `Bool` (§04). It is checked statically: a condition whose type is not
+`Bool` is a semantic error at compile time, never a runtime surprise.
+
+It is not *total*, and cannot be: a condition has **three** outcomes, because a
+name it reads may be unknown (owner decisions OD-2 and O2.11).
+
+```text
+true    → the rule fires
+false   → the rule does not fire
+unknown → the rule is PENDING: it does not fire, and it is reconsidered
+null    → E5006; a known absence is neither true nor false
+```
+
+*Pending is not false.* A rule waiting for information that has not arrived is a
+different thing from a rule whose condition was tested and did not hold, and the
+trace keeps them apart.
 
 ### 3.4 Inference — *decided: forward chaining to a least fixed point*
 
@@ -189,8 +203,16 @@ A round limit still exists as a defensive constant (§03), not as semantics.
 0.1 has **no mutable state**. The Master Specification (§11) requires that
 `INPUT`, `FACT`, `DERIVED FACT`, `STATE` and `OUTPUT` be distinguished; 0.1
 distinguishes the four it implements (input/declared facts, derived facts,
-outputs) and **does not implement `STATE` at all**. There is no `state` keyword,
-no partially-working state, and no reserved word pretending to be one.
+outputs) and **does not implement `STATE` at all**. There is no `state`
+construct and no partially-working state.
+
+`state` *is* a reserved word (`E1007`), so that introducing it later is not a
+breaking change. This paragraph previously claimed the opposite — "no reserved
+word pretending to be one" — which contradicted `02_FORMAL_SEMANTICS.md` §1.4
+and the lexer; the design audit recorded it as contradiction C2. Reserving a
+word is not the same as half-implementing a feature: `null` and `unknown` were
+reserved on exactly this reasoning, and when owner decision OD-2 arrived they
+were available.
 
 Introducing mutation requires answering, in writing, before any code:
 what a transition is, whether rules may cause one, how a rule that observed the
@@ -198,6 +220,14 @@ old value is explained, and how the fixed point is defined when the fact set is
 no longer monotone. Until then: absent.
 
 ### 3.6 Query — *OPEN* (Phase 6, with SQL). Not in 0.1.
+### 3.6a Existence predicates — **APPROVED (OD-2 follow-up)**
+
+`x is null`, `x is unknown` and `x is known` are **total**: every value is in
+exactly one of the three states, so each answers `true` or `false` and none can
+fail. They are what makes the strictness of the value model usable — a program
+that must cope with absence has a way to ask about it, rather than being told
+only that it did something wrong.
+
 ### 3.7 Decision — *not a separate entity in 0.1*. A decision is a derived fact that an `output` names.
 
 ### 3.8 Trace — *decided*

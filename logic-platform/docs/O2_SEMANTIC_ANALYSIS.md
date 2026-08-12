@@ -1,8 +1,8 @@
 # O2 SEMANTIC ANALYSIS — three models for `Known`, `Null` and `Unknown`
 
-Status: **analysis; the recommendation is PROPOSED — REQUIRES OWNER APPROVAL**
+Status: **recommendation APPROVED by the owner on 2026-08-12 and implemented**
 Companion: `docs/VALUE_AND_LOGIC_TRUTH_TABLE.md` (the cells)
-Governs nothing until approved. No implementation code has been changed.
+Approved and implemented; kept as the record of why this model and not the other two.
 
 ---
 
@@ -163,18 +163,19 @@ M3's errors are telling them to write.
 `Null` answers existence questions and refuses everything else. `Unknown` defers.
 Neither is ever `false`.
 
-**PROPOSED — REQUIRES OWNER APPROVAL.**
+**APPROVED 2026-08-12.** The three things that had to be decided with it were:
 
-If approved, three things must be decided with it, because the model is
-incomplete without them:
-
-1. **O2.11** — what a rule does when its condition evaluates to `unknown`
-   (fire never / retry / raise). The truth table cannot be applied to rule
-   activation without this.
-2. **O3.1** — whether the errors M3 introduces are fatal to the run, or a
-   recorded condition execution continues past.
-3. **O2.6 / register L** — whether the language gains a way to *test* for
-   absence, without which M3's errors are unanswerable by an author.
+1. **O2.11** — answered by the owner: a condition evaluating to `unknown` makes
+   the rule **pending**. Implemented, and visible in the trace.
+2. **O3.1** — decided under delegated authority: a semantic error in a rule ends
+   the execution, with a structured diagnostic and the partial trace. Continuing
+   would silently drop that rule's contribution, making the result
+   indistinguishable from one where the rule legitimately did not fire — which
+   is the kind of silence the whole model exists to prevent. Static errors are
+   still all reported together before anything runs.
+3. **O2.6 / register L** — decided: `x is null`, `x is unknown` and `x is known`
+   are total predicates, and `null` is a literal. Without them M3's errors would
+   be unanswerable by an author; with them, the strictness is navigable.
 
 ## 6. What I did not do
 

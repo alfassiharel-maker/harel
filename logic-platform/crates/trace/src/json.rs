@@ -1,19 +1,49 @@
 //! The machine-readable form of a trace.
 //!
-//! Written by hand because the shape is small and fixed, and because a
-//! serialisation dependency would be the first third-party crate in the
-//! workspace — a decision that needs the §30 justification, not a convenience
-//! argument. Output is deterministic: fields appear in a fixed order, so two
-//! runs of one program produce byte-identical JSON.
+//! **Every value is tagged with its state.** JSON `null` is never used for
+//! either `Unknown` or `Null`: owner instruction §9 requires the distinction to
+//! survive serialisation, and a bare `null` would collapse exactly the two
+//! states OD-2 separates. This is the fix for the violation the design audit
+//! recorded.
+//!
+//! ```json
+//! {"state":"Unknown"}
+//! {"state":"Null"}
+//! {"state":"Known","type":"Int","value":31}
+//! ```
+//!
+//! The `state` tag comes first in every value object, so a consumer can branch
+//! on it without buffering. Written by hand because the shape is small and
+//! fixed, and because a serialisation dependency would be the first third-party
+//! crate in the workspace. Output is deterministic: fields appear in a fixed
+//! order, so two runs of one program produce byte-identical JSON.
 
-use crate::event::{Emitted, TraceEventKind};
+use crate::event::{ConflictReport, ConflictSide, TraceEventKind};
 use crate::trace::Trace;
-use lml_types::Value;
+use lml_types::{Known, Value};
+
+/// The trace JSON schema version. Bumped when the shape changes.
+pub const TRACE_VERSION: u32 = 2;
 
 /// Render a trace as JSON.
+///
+/// The wall-clock metadata is included when present, in a `metadata` object
+/// that is clearly separate from `events` — semantic data and measurement do
+/// not mix (owner instruction §10).
 #[must_use]
 pub fn to_json(trace: &Trace) -> String {
-    let mut out = String::from("{\"trace_version\":1,\"events\":[");
+    let mut out = format!("{{\"trace_version\":{TRACE_VERSION}");
+
+    if let Some(metadata) = trace.metadata() {
+        out.push_str(&format!(
+            ",\"metadata\":{{\"execution_id\":{},\"started_at_unix_nanos\":{},\"duration_nanos\":{}}}",
+            string(&metadata.execution_id),
+            metadata.started_at_unix_nanos,
+            metadata.duration_nanos
+        ));
+    }
+
+    out.push_str(",\"events\":[");
     for (index, event) in trace.events().iter().enumerate() {
         if index > 0 {
             out.push(',');
@@ -43,19 +73,24 @@ fn fields(kind: &TraceEventKind) -> String {
                 string(program_digest)
             )
         }
-        TraceEventKind::FactDeclared { name, value } => {
+        TraceEventKind::FactDeclared { name, value }
+        | TraceEventKind::OutputEmitted { name, value } => {
             format!(",\"name\":{},\"value\":{}", string(name), json_value(value))
         }
         TraceEventKind::RoundStarted { round } => format!(",\"round\":{round}"),
-        TraceEventKind::RuleNotEvaluable { rule, missing } => {
+        TraceEventKind::ConditionEvaluated { rule, outcome } => {
             format!(
-                ",\"rule\":{},\"missing\":{}",
+                ",\"rule\":{},\"outcome\":{}",
                 string(rule),
-                string_array(missing)
+                string(outcome.name())
             )
         }
-        TraceEventKind::ConditionEvaluated { rule, result } => {
-            format!(",\"rule\":{},\"result\":{result}", string(rule))
+        TraceEventKind::RulePending { rule, waiting_for } => {
+            format!(
+                ",\"rule\":{},\"waiting_for\":{}",
+                string(rule),
+                string_array(waiting_for)
+            )
         }
         TraceEventKind::RuleActivated { rule, reads } => {
             format!(
@@ -71,47 +106,115 @@ fn fields(kind: &TraceEventKind) -> String {
             json_value(value),
             string(rule)
         ),
-        TraceEventKind::RoundFinished { round, fired_any } => {
-            format!(",\"round\":{round},\"fired_any\":{fired_any}")
+        TraceEventKind::ConflictRaised(report) => {
+            format!(",\"conflict\":{}", json_conflict(report))
         }
-        TraceEventKind::OutputEmitted { name, value } => {
-            let value = match value {
-                Emitted::Known(value) => json_value(value),
-                // `null` is the JSON of *unknown*, which is exactly what SQL
-                // `NULL` means too (`docs/04_TYPE_AND_DATA_MODEL.md` §9).
-                Emitted::Unknown => "null".to_owned(),
-            };
-            format!(",\"name\":{},\"value\":{value}", string(name))
+        TraceEventKind::RoundFinished {
+            round,
+            fired_any,
+            pending,
+        } => {
+            format!(",\"round\":{round},\"fired_any\":{fired_any},\"pending\":{pending}")
         }
         TraceEventKind::ExecutionFinished {
             rounds,
             facts_total,
             rules_fired,
+            rules_pending,
         } => {
             format!(
-                ",\"rounds\":{rounds},\"facts_total\":{facts_total},\"rules_fired\":{rules_fired}"
+                ",\"rounds\":{rounds},\"facts_total\":{facts_total},\"rules_fired\":{rules_fired},\"rules_pending\":{rules_pending}"
             )
         }
-        TraceEventKind::ErrorRaised { code, message } => {
-            format!(",\"code\":{},\"message\":{}", string(code), string(message))
+        TraceEventKind::ErrorRaised {
+            code,
+            message,
+            cause,
+        } => {
+            let cause = cause
+                .as_ref()
+                .map_or_else(|| "null".to_owned(), |text| string(text));
+            format!(
+                ",\"code\":{},\"message\":{},\"cause\":{cause}",
+                string(code),
+                string(message)
+            )
         }
     }
 }
 
-/// A value, tagged with its type.
+fn json_conflict(report: &ConflictReport) -> String {
+    let facts: Vec<String> = report
+        .relevant_facts
+        .iter()
+        .map(|(name, value)| {
+            format!(
+                "{{\"name\":{},\"value\":{}}}",
+                string(name),
+                json_value(value)
+            )
+        })
+        .collect();
+    let conditions: Vec<String> = report
+        .relevant_conditions
+        .iter()
+        .map(|(rule, text)| {
+            format!(
+                "{{\"rule\":{},\"condition\":{}}}",
+                string(rule),
+                string(text)
+            )
+        })
+        .collect();
+    let refs: Vec<String> = report.trace_refs.iter().map(u64::to_string).collect();
+    format!(
+        "{{\"id\":{},\"name\":{},\"existing\":{},\"incoming\":{},\"relevant_facts\":[{}],\"relevant_conditions\":[{}],\"round\":{},\"trace_refs\":[{}]}}",
+        string(&report.id),
+        string(&report.name),
+        json_side(&report.existing),
+        json_side(&report.incoming),
+        facts.join(","),
+        conditions.join(","),
+        report.round,
+        refs.join(",")
+    )
+}
+
+fn json_side(side: &ConflictSide) -> String {
+    let rule = side
+        .rule
+        .as_ref()
+        .map_or_else(|| "null".to_owned(), |text| string(text));
+    format!(
+        "{{\"rule\":{rule},\"value\":{},\"trace_seq\":{}}}",
+        json_value(&side.value),
+        side.trace_seq
+    )
+}
+
+/// A value, tagged with its state and — when known — its type.
 ///
-/// Tagged rather than bare because JSON cannot tell `1` from `1.0`, and the
-/// language takes that distinction seriously enough to refuse to compile
-/// `1 + 1.0`. A consumer that reads a trace must not lose it.
-fn json_value(value: &Value) -> String {
+/// Public because it is *the* encoding of a value: the CLI and any other
+/// consumer use this rather than writing a second one that could drift.
+///
+/// Tagged rather than bare for two reasons. `Unknown` and `Null` are distinct
+/// states and JSON has one `null`, so a bare encoding would lose the
+/// distinction. And JSON cannot tell `1` from `1.0`, which the language takes
+/// seriously enough to refuse to compile `1 + 1.0`.
+pub fn json_value(value: &Value) -> String {
     match value {
-        Value::Int(number) => format!("{{\"type\":\"Int\",\"value\":{number}}}"),
-        Value::Float(number) => {
-            // Always finite, so this is always valid JSON.
-            format!("{{\"type\":\"Float\",\"value\":{number:?}}}")
+        Value::Unknown => "{\"state\":\"Unknown\"}".to_owned(),
+        Value::Null => "{\"state\":\"Null\"}".to_owned(),
+        Value::Known(known) => {
+            let (ty, rendered) = match known {
+                Known::Int(number) => ("Int", number.to_string()),
+                // Always finite, so this is always valid JSON.
+                Known::Float(number) => ("Float", format!("{number:?}")),
+                Known::Bool(boolean) => ("Bool", boolean.to_string()),
+                Known::Str(text) => ("String", string(text)),
+            };
+            format!("{{\"state\":\"Known\",\"type\":\"{ty}\",\"value\":{rendered}}}")
         }
-        Value::Bool(boolean) => format!("{{\"type\":\"Bool\",\"value\":{boolean}}}"),
-        Value::Str(text) => format!("{{\"type\":\"String\",\"value\":{}}}", string(text)),
     }
 }
 
@@ -121,6 +224,11 @@ fn string_array(items: &[String]) -> String {
 }
 
 /// A JSON string literal, escaped per RFC 8259.
+#[must_use]
+pub fn json_string(text: &str) -> String {
+    string(text)
+}
+
 fn string(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
@@ -144,25 +252,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_three_states_have_three_encodings() {
+        // The requirement of owner instruction §9, executable: no state is
+        // written as bare JSON `null`, and no two states share an encoding.
+        let unknown = json_value(&Value::Unknown);
+        let null = json_value(&Value::Null);
+        let known = json_value(&Value::int(1));
+        assert_eq!(unknown, "{\"state\":\"Unknown\"}");
+        assert_eq!(null, "{\"state\":\"Null\"}");
+        assert_eq!(known, "{\"state\":\"Known\",\"type\":\"Int\",\"value\":1}");
+        assert_ne!(unknown, null);
+        for encoding in [&unknown, &null, &known] {
+            assert_ne!(
+                encoding.as_str(),
+                "null",
+                "a state was encoded as bare JSON null"
+            );
+        }
+    }
+
+    #[test]
+    fn values_carry_their_type() {
+        assert_eq!(
+            json_value(&Value::float(1.0).unwrap_or(Value::Null)),
+            "{\"state\":\"Known\",\"type\":\"Float\",\"value\":1.0}"
+        );
+        assert_eq!(
+            json_value(&Value::int(1)),
+            "{\"state\":\"Known\",\"type\":\"Int\",\"value\":1}"
+        );
+    }
+
+    #[test]
     fn control_characters_are_escaped() {
         assert_eq!(string("a\u{1}b"), "\"a\\u0001b\"");
         assert_eq!(string("tab\there"), "\"tab\\there\"");
     }
 
     #[test]
-    fn values_carry_their_type() {
-        assert_eq!(json_value(&Value::Int(1)), "{\"type\":\"Int\",\"value\":1}");
-        assert_eq!(
-            json_value(&Value::Float(1.0)),
-            "{\"type\":\"Float\",\"value\":1.0}"
-        );
-    }
-
-    #[test]
     fn an_empty_trace_is_still_valid_json() {
         assert_eq!(
             to_json(&Trace::new()),
-            "{\"trace_version\":1,\"events\":[]}"
+            "{\"trace_version\":2,\"events\":[]}"
         );
     }
 }

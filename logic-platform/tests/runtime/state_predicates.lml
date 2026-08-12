@@ -1,0 +1,14 @@
+# The three state predicates are total: every value answers all three.
+fact present = 42
+fact absent = null
+
+rule classify:
+    when present is known
+    then present_known = present is known
+    then present_null = present is null
+    then absent_null = absent is null
+    then missing_unknown = never_bound is unknown
+
+rule never_fires: when present > 99 then never_bound = 1
+
+output present_known, present_null, absent_null, missing_unknown

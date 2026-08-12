@@ -1,0 +1,8 @@
+# A rule whose condition is unknown is PENDING, not false: it does not fire,
+# and it is reconsidered while information can still arrive.
+fact a = 1
+
+rule waits: when arriving > 0 then result = "fired"
+rule provides: when a == 1 then arriving = 5
+
+output result

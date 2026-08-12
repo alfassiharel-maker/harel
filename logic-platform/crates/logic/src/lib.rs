@@ -1,5 +1,10 @@
 //! Logic objects and their evaluation.
 //!
+//! The three-state value model of owner decision OD-2 lives in `lml-types`;
+//! this crate is where it is *used*: the fact set stores `Null` and never
+//! `Unknown`, and the evaluator returns whichever of the three states an
+//! expression produces.
+//!
 //! This crate owns the *representation* — what a fact is, what the set of known
 //! facts is, and what an expression evaluates to over it. It does not own the
 //! *strategy*: nothing here decides which rule to try, in what order, or how
@@ -16,5 +21,5 @@
 mod eval;
 mod facts;
 
-pub use eval::{eval, Evaluated};
+pub use eval::eval;
 pub use facts::{Fact, FactSet, Insertion, Origin};

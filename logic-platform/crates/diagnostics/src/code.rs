@@ -77,6 +77,15 @@ pub enum Code {
     DivisionByZero,
     /// A float operation produced a non-finite value.
     NonFiniteFloat,
+    /// An ordering comparison was applied to a value known to be absent.
+    /// `Null` records existence, not magnitude, so `<` has nothing to compare.
+    NullNotOrdered,
+    /// Arithmetic was applied to a value known to be absent.
+    NullNotArithmetic,
+    /// A value known to be absent was used where a truth value is required.
+    /// `Null` is neither `true` nor `false`, and treating it as either would
+    /// collapse two states the language keeps distinct.
+    NullNotBoolean,
     /// An invariant the earlier stages were supposed to guarantee did not hold.
     /// Always an engine defect; reported rather than panicked (§8).
     InternalInvariant,
@@ -129,6 +138,9 @@ impl Code {
             Self::IntegerOverflow => "E5001",
             Self::DivisionByZero => "E5002",
             Self::NonFiniteFloat => "E5003",
+            Self::NullNotOrdered => "E5004",
+            Self::NullNotArithmetic => "E5005",
+            Self::NullNotBoolean => "E5006",
             Self::InternalInvariant => "E5099",
 
             Self::InferenceRoundLimit => "E8001",
@@ -184,6 +196,9 @@ impl Code {
             Self::IntegerOverflow,
             Self::DivisionByZero,
             Self::NonFiniteFloat,
+            Self::NullNotOrdered,
+            Self::NullNotArithmetic,
+            Self::NullNotBoolean,
             Self::InternalInvariant,
             Self::InferenceRoundLimit,
             Self::SourceTooLarge,

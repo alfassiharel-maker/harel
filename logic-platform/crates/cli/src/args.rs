@@ -94,25 +94,38 @@ pub fn parse(args: &[String]) -> Result<Command, UsageError> {
             format: format_flag(args, Format::Plain)?,
         }),
         "why" => {
-            let path = path_argument(args, "why")?;
-            let name = args
-                .get(2)
-                .filter(|argument| !argument.starts_with("--"))
+            let mut arguments = positional(args);
+            let path = arguments
+                .next()
+                .cloned()
                 .ok_or_else(|| UsageError("`why` needs a file and a name".to_owned()))?;
-            Ok(Command::Why {
-                path,
-                name: name.clone(),
-            })
+            let name = arguments
+                .next()
+                .cloned()
+                .ok_or_else(|| UsageError("`why` needs a file and a name".to_owned()))?;
+            Ok(Command::Why { path, name })
         }
         other => Err(UsageError(format!("`{other}` is not a command"))),
     }
 }
 
+/// The first non-flag argument after the command.
+///
+/// Position-independent, so `lml run --format=json a.lml` and
+/// `lml run a.lml --format=json` are the same command. Taking the argument
+/// positionally made the first form fail with "run needs a file", which is a
+/// confusing thing to say about a command line that names one.
 fn path_argument(args: &[String], command: &str) -> Result<String, UsageError> {
-    args.get(1)
-        .filter(|argument| !argument.starts_with("--"))
+    positional(args)
+        .next()
         .cloned()
         .ok_or_else(|| UsageError(format!("`{command}` needs a file")))
+}
+
+fn positional(args: &[String]) -> impl Iterator<Item = &String> {
+    args.iter()
+        .skip(1)
+        .filter(|argument| !argument.starts_with('-'))
 }
 
 fn format_flag(args: &[String], default: Format) -> Result<Format, UsageError> {
@@ -193,6 +206,20 @@ mod tests {
             })
         );
         assert_eq!(parse(&args(&[])), Ok(Command::Help));
+    }
+
+    #[test]
+    fn flags_may_come_before_or_after_the_file() {
+        let before = parse(&args(&["run", "--format=json", "a.lml"]));
+        let after = parse(&args(&["run", "a.lml", "--format=json"]));
+        assert_eq!(before, after);
+        assert_eq!(
+            before,
+            Ok(Command::Run {
+                path: "a.lml".into(),
+                format: Format::Json
+            })
+        );
     }
 
     #[test]

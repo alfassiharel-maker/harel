@@ -52,11 +52,11 @@ containing a `todo!()` is a lie about the state of the system.
 | `lexer` | text → tokens | any notion of declarations or meaning |
 | `ast` | the syntax tree data types | evaluation, validation, I/O |
 | `parser` | tokens → AST, the grammar | type rules, name resolution |
-| `types` | the type lattice, operator typing | evaluation, AST traversal |
+| `types` | the type lattice, **the three-state `Value` model**, operator typing | evaluation, AST traversal |
 | `semantic` | name resolution, type inference, all static checks | lowering, execution |
 | `ir` | the IR data types, canonical printing, digesting | lowering *policy*, execution |
 | `compiler` | orchestration of the four stages + lowering | any analysis of its own |
-| `logic` | `Value`, `FactSet`, expression evaluation | inference strategy, scheduling |
+| `logic` | `FactSet`, `Origin`, expression evaluation | the value model itself, inference strategy, scheduling |
 | `reasoning` | the fixed point, rule state, conflict detection | value representation, I/O |
 | `trace` | trace events, JSON output, `why`, SHA-256 digest | log levels, timestamps |
 | `runtime` | `ExecutionContext`, limits, the run loop | parsing, lowering |
@@ -106,8 +106,11 @@ Invariants, each checked by `make lint-arch`:
 3. **No core crate names a database.** `logic` may not mention SQLite, Postgres
    or DuckDB; when `sql` exists it will sit behind a `DataSource` trait defined
    in `logic`, with adapters below it. (Engineering Spec §36.)
-4. **No cycles.** Cargo enforces this for us; the script checks the *intended*
-   edges too, so an unintended-but-acyclic edge is still caught.
+4. **No cycles, and no undeclared edges.** Cargo rejects cycles; the script
+   compares every crate's declared dependencies against the graph above, so an
+   unintended-but-acyclic edge fails the build. (It did not, until the design
+   audit found the gap — contradiction C5 — which is how three unused edges
+   survived.)
 5. **`logic` does not depend on `reasoning`.** Representation does not know about
    strategy. This is what makes a future backward-chaining engine an addition
    rather than a rewrite.

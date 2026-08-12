@@ -1,0 +1,10 @@
+# `threshold` is typed `Int` — one rule derives an Int, another derives null —
+# so `score > threshold` type-checks. At run time the value turns out absent,
+# and the engine reports it rather than inventing an ordering.
+fact score = 10
+
+rule high: when score > 99 then threshold = 5
+rule absent: when score == 10 then threshold = null
+rule compare: when threshold is null then over = score > threshold
+
+output over

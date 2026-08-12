@@ -114,6 +114,32 @@ fn trace_snapshots_match() {
 }
 
 #[test]
+fn ir_snapshots_match() {
+    // `docs/05_ARCHITECTURE.md` §5 advertised `.expected-ir` fixtures before
+    // the harness could read them — audit contradiction C6. It can now.
+    let mut failures = Vec::new();
+
+    for path in fixtures() {
+        let snapshot_path = path.with_extension("expected-ir");
+        let Ok(expected) = std::fs::read_to_string(&snapshot_path) else {
+            continue;
+        };
+        let source = std::fs::read_to_string(&path).expect("fixture is readable");
+        let compilation = compile(&source).unwrap_or_else(|d| panic!("{}: {d}", path.display()));
+        let actual = lml_ir::print_ir(&compilation.ir);
+        if actual.trim_end() != expected.trim_end() {
+            failures.push(format!("{}\n{actual}", path.display()));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "IR snapshots failed:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
 fn every_execution_is_reproducible() {
     // Determinism is a language guarantee (docs/01 §6), so it is checked over
     // every fixture rather than in one example.

@@ -113,8 +113,25 @@ ordered by how much would have to change if the decision goes the other way:
 ## 5. What is contradictory
 
 Found by re-reading the five documents against each other and against the code.
-**Per the audit order, these are reported and not fixed.** Proposed corrections
-are given so the decision is a yes/no, not a design task.
+They were reported first and left in place, per the audit order.
+
+**Update 2026-08-12 — all nine are now resolved**, under the autonomous
+engineering mandate:
+
+| # | Resolution |
+|---|---|
+| **C1** | `TraceMetadata` carries an execution id and timing, and is excluded from trace equality. Both Master Spec §10 and deterministic comparison hold at once. |
+| **C2** | `docs/01` §3.5 corrected: reserving a word is not half-implementing a feature, and `null`/`unknown` proved the point when OD-2 arrived. |
+| **C3** | `docs/03` §6 pseudocode rewritten to the three-outcome loop that exists. |
+| **C4** | `docs/05` §2 corrected: `types` owns the value model, `logic` owns the fact set and evaluation. |
+| **C5** | The architecture lint now compares every crate's declared dependencies against the documented graph. Verified to fail on a deliberate violation. |
+| **C6** | `.expected-ir` snapshots are read by the fixture harness; the first one is `tests/runtime/null_vs_unknown.expected-ir`. |
+| **C7** | `crates/parser/tests/grammar.rs` compares `grammar.ebnf` with `docs/02` §2 production by production. It caught real drift the first time it ran. |
+| **G1** | `Diagnostic::cause` added and populated on the paths where the cause differs from the message. |
+| **D1–D3** | Two edges became genuinely used by the new value model; the third (`trace → diagnostics`) was removed. The new lint check would now catch a recurrence. |
+
+The original findings follow, unedited, because a resolved contradiction is
+still evidence about how the documents drift.
 
 **C1 — The trace omits fields the specification lists.**
 Master Spec §10's trace model includes **Execution ID** and **Timing**. Neither

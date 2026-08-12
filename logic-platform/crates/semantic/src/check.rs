@@ -403,22 +403,34 @@ impl Typer<'_, '_> {
                     first = Some((ty, span));
                     result = Some(ty);
                 }
-                Some((expected, first_span)) if expected != ty => {
-                    // T1 — several rules deriving one name must agree.
-                    self.diagnostics.push(
-                        Diagnostic::new(
-                            Code::ConflictingNameType,
-                            span,
-                            format!(
-                                "`{name}` is derived as `{ty}` here and as `{expected}` elsewhere"
+                Some((expected, first_span)) => match expected.unify(ty) {
+                    // `Null` unifies with everything: a name one rule derives
+                    // as `null` and another as an `Int` is an `Int` that can be
+                    // absent, which the three-state value model expresses
+                    // directly (owner decision OD-2).
+                    Some(unified) => {
+                        first = Some((unified, first_span));
+                        result = Some(unified);
+                    }
+                    // T1 — otherwise every writer of a name must agree.
+                    None => {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                Code::ConflictingNameType,
+                                span,
+                                format!(
+                                    "`{name}` is derived as `{ty}` here and as `{expected}` elsewhere"
+                                ),
+                            )
+                            .with_label(first_span, format!("derived as `{expected}` here"))
+                            .with_cause(format!("`{ty}` and `{expected}` have no common type"))
+                            .with_help(
+                                "every writer of a name must produce the same type; `null` is compatible with any of them",
                             ),
-                        )
-                        .with_label(first_span, format!("derived as `{expected}` here"))
-                        .with_help("every writer of a name must produce the same type"),
-                    );
-                    failed = true;
-                }
-                Some(_) => {}
+                        );
+                        failed = true;
+                    }
+                },
             }
         }
         self.visiting.pop();
@@ -433,6 +445,14 @@ impl Typer<'_, '_> {
         match expr {
             Expr::Literal { value, .. } => Some(type_of_literal(value)),
             Expr::Name(name) => self.name_type(&name.text, Some(name.span)),
+            // A state predicate is total: every value is in exactly one of the
+            // three states, so the answer is always a `Bool` and the predicate
+            // can never fail. The operand is still typed, so an error *inside*
+            // it is reported.
+            Expr::Is { operand, .. } => {
+                let _ = self.expr_type(operand);
+                Some(Type::Bool)
+            }
             Expr::Unary { op, operand, span } => {
                 let operand_type = self.expr_type(operand)?;
                 unary_result(*op, operand_type).or_else(|| {
@@ -456,7 +476,10 @@ impl Typer<'_, '_> {
                 let right_type = self.expr_type(right);
                 let (left_type, right_type) = (left_type?, right_type?);
                 binary_result(*op, left_type, right_type).or_else(|| {
-                    let help = if left_type != right_type {
+                    let involves_null = left_type == Type::Null || right_type == Type::Null;
+                    let help = if involves_null {
+                        "`null` records that a value is absent, so it has no magnitude, no quantity and no truth value; ask about it with `is null`"
+                    } else if left_type != right_type {
                         "there is no implicit conversion between types; both sides must already agree"
                     } else {
                         "this operator is not defined for that type"

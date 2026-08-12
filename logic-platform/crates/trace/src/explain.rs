@@ -131,7 +131,7 @@ mod tests {
         let mut trace = Trace::new();
         trace.record(TraceEventKind::FactDeclared {
             name: "temperature".into(),
-            value: Value::Int(31),
+            value: Value::int(31),
         });
         trace.record(TraceEventKind::RuleActivated {
             rule: "heat".into(),
@@ -139,7 +139,7 @@ mod tests {
         });
         trace.record(TraceEventKind::FactDerived {
             name: "status".into(),
-            value: Value::Str("hot".into()),
+            value: Value::string("hot"),
             rule: "heat".into(),
         });
         trace

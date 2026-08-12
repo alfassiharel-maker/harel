@@ -45,6 +45,36 @@ if grep -rniE '\b(sqlite|postgres|duckdb|libpq|rusqlite)\b' crates/ --include='*
     fail "a core crate mentions a database engine (docs/05 §3, invariant 3)"
 fi
 
+# --- 3b. The declared graph is the documented graph. -------------------------
+# The design audit found this missing (contradiction C5): the script claimed to
+# check the intended edges and did not, which is how three unused dependency
+# edges survived it. Each line is "crate: the edges it may declare"; a missing
+# edge is fine (a crate need not use everything it is allowed to), an extra one
+# is not.
+declare -A ALLOWED=(
+    [diagnostics]=""
+    [ast]="lml-diagnostics"
+    [lexer]="lml-diagnostics"
+    [parser]="lml-ast lml-diagnostics lml-lexer"
+    [types]="lml-ast"
+    [semantic]="lml-ast lml-diagnostics lml-types"
+    [ir]="lml-diagnostics lml-types"
+    [logic]="lml-diagnostics lml-ir lml-types"
+    [trace]="lml-types"
+    [reasoning]="lml-diagnostics lml-ir lml-logic lml-trace lml-types"
+    [compiler]="lml-ast lml-diagnostics lml-ir lml-logic lml-parser lml-semantic lml-types"
+    [runtime]="lml-diagnostics lml-ir lml-logic lml-reasoning lml-trace lml-types"
+    [cli]="lml-ast lml-compiler lml-diagnostics lml-ir lml-runtime lml-trace lml-types"
+)
+
+for crate in "${!ALLOWED[@]}"; do
+    for dep in $(deps_of "$crate"); do
+        if ! grep -qw -- "$dep" <<<"${ALLOWED[$crate]}"; then
+            fail "lml-$crate declares $dep, which docs/05_ARCHITECTURE.md §3 does not allow"
+        fi
+    done
+done
+
 # --- 4. Representation does not depend on strategy. --------------------------
 if deps_of logic | grep -q '^lml-reasoning$'; then
     fail "lml-logic depends on lml-reasoning; representation must not know about strategy"

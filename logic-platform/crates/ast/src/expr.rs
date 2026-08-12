@@ -18,6 +18,42 @@ pub enum Literal {
     Bool(bool),
     /// A string literal with escapes resolved.
     Str(String),
+    /// The `null` literal: a *known* absence of a value (owner decision OD-2).
+    ///
+    /// There is no literal for `unknown`. `unknown` is the state of a name
+    /// nothing has bound, so writing `fact a = unknown` would assert that a
+    /// value is known to be not known, which is a contradiction. It is
+    /// reachable only through the `is unknown` predicate.
+    Null,
+}
+
+/// The state a `x is <state>` predicate tests for.
+///
+/// These are the language's existence predicates, and they are **total**: every
+/// value is in exactly one of the three states, so the answer is always a plain
+/// `Bool` and the predicate can never fail. They are what makes the strictness
+/// of the rest of the model usable — a program that must cope with absence has
+/// a way to ask about it (`docs/O2_SEMANTIC_ANALYSIS.md` §3, M3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StateTest {
+    /// `is null` — known absence.
+    Null,
+    /// `is unknown` — not enough information.
+    Unknown,
+    /// `is known` — a concrete value.
+    Known,
+}
+
+impl StateTest {
+    /// How the test is written.
+    #[must_use]
+    pub const fn keyword(self) -> &'static str {
+        match self {
+            Self::Null => "null",
+            Self::Unknown => "unknown",
+            Self::Known => "known",
+        }
+    }
 }
 
 /// Prefix operators.
@@ -124,6 +160,15 @@ pub enum Expr {
         /// The whole expression, operator included.
         span: Span,
     },
+    /// A state predicate: `x is null`, `x is unknown`, `x is known`.
+    Is {
+        /// The expression whose state is tested.
+        operand: Box<Expr>,
+        /// Which state.
+        test: StateTest,
+        /// The whole expression.
+        span: Span,
+    },
     /// An infix operator applied to two operands.
     Binary {
         /// The operator.
@@ -142,9 +187,10 @@ impl Expr {
     #[must_use]
     pub const fn span(&self) -> Span {
         match self {
-            Self::Literal { span, .. } | Self::Unary { span, .. } | Self::Binary { span, .. } => {
-                *span
-            }
+            Self::Literal { span, .. }
+            | Self::Unary { span, .. }
+            | Self::Is { span, .. }
+            | Self::Binary { span, .. } => *span,
             Self::Name(name) => name.span,
         }
     }
@@ -154,7 +200,7 @@ impl Expr {
         match self {
             Self::Literal { .. } => {}
             Self::Name(name) => visit(name),
-            Self::Unary { operand, .. } => operand.visit_names(visit),
+            Self::Unary { operand, .. } | Self::Is { operand, .. } => operand.visit_names(visit),
             Self::Binary { left, right, .. } => {
                 left.visit_names(visit);
                 right.visit_names(visit);

@@ -1,24 +1,84 @@
 //! Trace events.
 //!
 //! A trace is a *structured* record of what the engine did, not logging. There
-//! are no levels, no free text meant for a human instead of a machine, and no
-//! timestamps: a timestamp would make two runs of the same program produce
-//! different traces, and comparing traces is the point (`docs/03_EXECUTION_MODEL.md`
-//! §7). Timing is a metric, recorded elsewhere.
+//! are no levels and no free text meant for a human instead of a machine.
+//!
+//! **Semantic identity excludes time.** Owner instruction §10: timing metadata
+//! may exist, but semantic equality must not depend on wall-clock timestamps.
+//! So events carry a sequence number and no clock, and the wall-clock data
+//! lives in [`crate::TraceMetadata`], which is excluded from `Trace`'s
+//! `PartialEq`. Two runs of one program produce equal traces and can still be
+//! measured. This resolves audit contradiction C1, which arose from dropping
+//! the specification's `Timing` field to protect comparability — both are
+//! achievable at once.
 //!
 //! Events name things by text rather than by id, so a trace can be read without
 //! the IR that produced it.
 
 use lml_types::Value;
 
-/// What was emitted for an output name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Emitted {
-    /// A value was derived.
-    Known(Value),
-    /// Nothing derived it. Not an error, and emphatically not `0`
-    /// (`docs/02_FORMAL_SEMANTICS.md` §4.4).
+/// The outcome of evaluating a rule's condition.
+///
+/// Three outcomes, not two: `Unknown` is not `false` (owner decisions OD-2 and
+/// O2.11), and the difference must stay visible in the trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionOutcome {
+    /// The condition holds; the rule fires.
+    True,
+    /// The condition does not hold; the rule does not fire and will not be
+    /// reconsidered unless the facts it reads change — which, facts being
+    /// immutable, they cannot.
+    False,
+    /// Not enough information yet. The rule is **pending**: it does not fire,
+    /// and it is reconsidered next round.
     Unknown,
+}
+
+impl ConditionOutcome {
+    /// The name used in the trace and its JSON form.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::True => "true",
+            Self::False => "false",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// One side of a conflict: who concluded what, and where that is recorded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictSide {
+    /// The rule that concluded it, or `None` for a `fact` declaration.
+    pub rule: Option<String>,
+    /// What it concluded.
+    pub value: Value,
+    /// The trace event that recorded the conclusion.
+    pub trace_seq: u64,
+}
+
+/// Everything owner decision OD-3 requires a conflict to report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictReport {
+    /// Stable identifier, unique within the execution: `C1`, `C2`, …
+    ///
+    /// Deterministic by construction — it counts conflicts in the order they
+    /// occur — so two runs of one program produce the same ids.
+    pub id: String,
+    /// The name the two conclusions disagree about.
+    pub name: String,
+    /// The conclusion already held.
+    pub existing: ConflictSide,
+    /// The conclusion that could not be added.
+    pub incoming: ConflictSide,
+    /// The facts both rules read, with their values at the moment of conflict.
+    pub relevant_facts: Vec<(String, Value)>,
+    /// The conditions of the rules involved, as the IR renders them.
+    pub relevant_conditions: Vec<(String, String)>,
+    /// The inference round it happened in.
+    pub round: usize,
+    /// Trace events that explain it: both conclusions, and the activations.
+    pub trace_refs: Vec<u64>,
 }
 
 /// One thing the engine did.
@@ -37,7 +97,7 @@ pub enum TraceEventKind {
     FactDeclared {
         /// The name.
         name: String,
-        /// Its value.
+        /// Its value — which may be `null`.
         value: Value,
     },
     /// An inference round began.
@@ -45,19 +105,21 @@ pub enum TraceEventKind {
         /// 1-based round number.
         round: usize,
     },
-    /// A rule could not be tried because something it reads is unknown.
-    RuleNotEvaluable {
-        /// The rule's name.
-        rule: String,
-        /// What it is waiting for, in name order.
-        missing: Vec<String>,
-    },
-    /// A rule's condition was evaluated.
+    /// A rule's condition was evaluated, to one of three outcomes.
     ConditionEvaluated {
         /// The rule's name.
         rule: String,
-        /// The result.
-        result: bool,
+        /// The outcome.
+        outcome: ConditionOutcome,
+    },
+    /// A rule is **pending**: its condition is `Unknown`, so it neither fired
+    /// nor failed, and it will be reconsidered.
+    RulePending {
+        /// The rule's name.
+        rule: String,
+        /// The names it is waiting for, in name order. Empty means the
+        /// condition is unknown for a reason other than a missing name.
+        waiting_for: Vec<String>,
     },
     /// A rule fired.
     RuleActivated {
@@ -88,19 +150,24 @@ pub enum TraceEventKind {
         /// The rule that re-derived it.
         rule: String,
     },
+    /// Two conclusions for one name could not both hold.
+    ConflictRaised(Box<ConflictReport>),
     /// An inference round ended.
     RoundFinished {
         /// The round number.
         round: usize,
         /// Whether any rule fired in it. `false` ends the fixed point.
         fired_any: bool,
+        /// How many rules are still pending — waiting for information that no
+        /// longer can arrive, once this is the final round.
+        pending: usize,
     },
     /// An output was emitted.
     OutputEmitted {
         /// The name.
         name: String,
-        /// Its value, or `Unknown`.
-        value: Emitted,
+        /// Its value: a concrete value, `null`, or `unknown`.
+        value: Value,
     },
     /// Execution finished normally.
     ExecutionFinished {
@@ -110,6 +177,8 @@ pub enum TraceEventKind {
         facts_total: usize,
         /// How many rules fired.
         rules_fired: usize,
+        /// How many rules never became evaluable.
+        rules_pending: usize,
     },
     /// Execution stopped with an error. A partial trace is still produced, up
     /// to and including this event.
@@ -118,6 +187,8 @@ pub enum TraceEventKind {
         code: String,
         /// The message.
         message: String,
+        /// What produced it, when that is known.
+        cause: Option<String>,
     },
 }
 
@@ -130,11 +201,12 @@ impl TraceEventKind {
             Self::ExecutionStarted { .. } => "ExecutionStarted",
             Self::FactDeclared { .. } => "FactDeclared",
             Self::RoundStarted { .. } => "RoundStarted",
-            Self::RuleNotEvaluable { .. } => "RuleNotEvaluable",
             Self::ConditionEvaluated { .. } => "ConditionEvaluated",
+            Self::RulePending { .. } => "RulePending",
             Self::RuleActivated { .. } => "RuleActivated",
             Self::FactDerived { .. } => "FactDerived",
             Self::DerivationRedundant { .. } => "DerivationRedundant",
+            Self::ConflictRaised(_) => "ConflictRaised",
             Self::RoundFinished { .. } => "RoundFinished",
             Self::OutputEmitted { .. } => "OutputEmitted",
             Self::ExecutionFinished { .. } => "ExecutionFinished",

@@ -26,6 +26,15 @@ pub enum TokenKind {
     Or,
     /// `not`
     Not,
+    /// `is` — introduces a state predicate, `x is null`.
+    Is,
+    /// `null` — the known-absence literal, and the operand of `is null`.
+    Null,
+    /// `unknown` — the operand of `is unknown`. Not a literal: see
+    /// [`lml_ast::Literal::Null`] for why there is no `unknown` value.
+    Unknown,
+    /// `known` — the operand of `is known`.
+    Known,
 
     // ---- literals ----------------------------------------------------------
     /// A dotted identifier, e.g. `user.age`.
@@ -96,6 +105,10 @@ impl TokenKind {
             Self::And => "`and`".into(),
             Self::Or => "`or`".into(),
             Self::Not => "`not`".into(),
+            Self::Is => "`is`".into(),
+            Self::Null => "`null`".into(),
+            Self::Unknown => "`unknown`".into(),
+            Self::Known => "`known`".into(),
             Self::Ident(name) => format!("name `{name}`"),
             Self::Int(_) => "an integer literal".into(),
             Self::Float(_) => "a float literal".into(),
@@ -162,7 +175,7 @@ impl fmt::Display for TokenKind {
 /// an existing program (`docs/02_FORMAL_SEMANTICS.md` §1.4).
 pub const RESERVED_WORDS: &[&str] = &[
     "assert", "derive", "else", "fn", "for", "if", "import", "in", "let", "macro", "match",
-    "module", "null", "query", "return", "state", "type", "unknown", "while",
+    "module", "query", "return", "state", "type", "while",
 ];
 
 /// The keyword for `word`, if it is one.
@@ -177,6 +190,10 @@ pub fn keyword(word: &str) -> Option<TokenKind> {
         "and" => Some(TokenKind::And),
         "or" => Some(TokenKind::Or),
         "not" => Some(TokenKind::Not),
+        "is" => Some(TokenKind::Is),
+        "null" => Some(TokenKind::Null),
+        "unknown" => Some(TokenKind::Unknown),
+        "known" => Some(TokenKind::Known),
         "true" => Some(TokenKind::Bool(true)),
         "false" => Some(TokenKind::Bool(false)),
         _ => None,

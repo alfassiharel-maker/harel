@@ -14,18 +14,12 @@ Here, the three mean:
 
 Nothing below is marked VERIFIED because it "looked right".
 
-> ⚠️ **Read VERIFIED as "verified against a provisional specification".**
-> The design audit (`docs/DESIGN_AUDIT.md`) found that most of the semantics
-> these tests check were decided by the implementation rather than by the
-> Master Specification. The tests prove the engine does what `docs/01`–`docs/05`
-> say; they cannot prove those documents say the right thing. Per-decision
-> provenance is in `docs/SEMANTIC_DECISION_REGISTER.md`.
->
-> **Since 2026-08-12 the engine also diverges from *approved* semantics.**
-> Owner decision OD-2 makes `Unknown`, `Null` and `Known(Value)` three distinct
-> conditions; the implementation has two, and no `Null`. Every row below that
-> touches values, types, evaluation or output is therefore VERIFIED against a
-> model that is now known to be incomplete. See `docs/SEMANTIC_IMPACT_MAP.md`.
+> **Provenance matters as much as the tick.** Rows marked ✅ VERIFIED for
+> owner-approved semantics (OD-1, OD-2, OD-3 and the O2 follow-ups) are verified
+> against decisions the owner made. The rest are verified against decisions the
+> implementation made, which `docs/SEMANTIC_DECISION_REGISTER.md` classifies one
+> by one. The tests prove the engine does what the documents say; only the
+> register says who decided what they say.
 
 ---
 
@@ -39,17 +33,22 @@ Nothing below is marked VERIFIED because it "looked right".
 | AST | ✅ | ✅ | ✅ | canonical printer + snapshot in the parser tests |
 | Semantic rules N1–N7 | ✅ | ✅ | ✅ | `crates/semantic/tests/analyze.rs`, one test per rule |
 | Type system T1–T5 | ✅ | ✅ | ✅ | same file + `crates/types` unit tests |
-| Facts | ✅ | ✅ | ✅ | `crates/logic/src/facts.rs` tests, runtime tests |
+| Facts — immutable (OD-1) | ✅ | ✅ | ✅ | `crates/logic/src/facts.rs` tests, runtime tests |
+| **Value model — `Unknown` / `Null` / `Known` (OD-2)** | ✅ | ✅ | ✅ | `crates/types/src/value.rs`, `crates/logic/tests/evaluate.rs`, 4 fixtures |
+| **Existence predicates `is null` / `is unknown` / `is known`** | ✅ | ✅ | ✅ | lexer, parser, IR and evaluator tests; `state_predicates.lml` |
+| **Pending rules (O2.11)** | ✅ | ✅ | ✅ | `crates/runtime/tests/execute.rs`, `pending_rule.lml`, `RulePending` events |
 | Rules | ✅ | ✅ | ✅ | `crates/runtime/tests/execute.rs` |
 | Inference (forward chaining, fixed point) | ✅ | ✅ | ✅ | `crates/runtime/tests/execute.rs` |
-| Conflict semantics (`E4001`) | ✅ | ✅ | ✅ | runtime tests + `tests/runtime/conflicting_rules.lml` |
+| Conflict semantics (OD-3): explicit, seven-element report | ✅ | ✅ | ✅ | `the_conflict_report_carries_what_od3_requires`, `conflicting_rules.lml` |
+| Conflict strategy seam (`trait ConflictStrategy`) | ✅ | ✅ | ✅ | `crates/reasoning/src/conflict.rs` |
 | Cycle behaviour | ✅ | ✅ | ✅ | `a_value_cycle_reaches_a_fixed_point` |
 | Determinism | ✅ | ✅ | ✅ | fixture harness re-runs every fixture and compares traces |
 | Error system (codes, spans, help) | ✅ | ✅ | ✅ | `crates/diagnostics` tests; every error path has a test |
 | IR | ✅ | ✅ | ✅ | `crates/compiler/tests/compile.rs`, canonical snapshot |
 | Runtime | ✅ | ✅ | ✅ | `crates/runtime/tests/execute.rs` (14 tests) |
 | Regression tests | ✅ | ✅ | ✅ | `tests/runtime/` fixtures, run by `tests/e2e` |
-| **State model** | ❌ | ❌ | ❌ | **OPEN DESIGN DECISION B.** Absent, not stubbed. |
+| **State model** | ❌ | ❌ | ❌ | **OPEN DESIGN DECISION B / O1.2.** Absent, not stubbed. |
+| **`Observation` as a distinct origin** | ⚠️ | ❌ | ❌ | Required by OD-1; its representation is **O1.1**, unspecified. `Origin` has two of the four categories, and no placeholder for the others. |
 
 ## Reasoning system (Master Spec §51)
 
@@ -60,6 +59,8 @@ Nothing below is marked VERIFIED because it "looked right".
 | Dependencies represented | ✅ | ✅ | ✅ (`SemanticModel::readers_of`, `IrRule::reads`) |
 | Trace | ✅ | ✅ | ✅ |
 | Explanation generated from the trace | ✅ | ✅ | ✅ (`why`, and it returns `None` rather than guessing) |
+| Why a rule did **not** fire: false vs pending | ✅ | ✅ | ✅ (`ConditionEvaluated` beside `RulePending`) |
+| Execution id and timing, without breaking comparability | ✅ | ✅ | ✅ (`TraceMetadata`, excluded from `PartialEq`) |
 | Cycles have defined behaviour | ✅ | ✅ | ✅ |
 | Conflicts have defined behaviour | ✅ | ✅ | ✅ |
 | Determinism tested | ✅ | ✅ | ✅ |
@@ -83,7 +84,7 @@ current named-fact model, and the determinism question there is unresolved.
 
 ```bash
 cd logic-platform
-make verify        # fmt, clippy, architecture lint, 127 tests
+make verify        # fmt, clippy, architecture lint, 159 tests
 make run-example   # the canonical program, its trace, and its explanation
 ```
 

@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dev-dependencies]
 lml-compiler = { path = "../../crates/compiler" }
+lml-ir = { path = "../../crates/ir" }
 lml-runtime = { path = "../../crates/runtime" }
 lml-trace = { path = "../../crates/trace" }
 

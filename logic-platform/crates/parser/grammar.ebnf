@@ -20,11 +20,13 @@ expr           = or_expr ;
 or_expr        = and_expr { "or" and_expr } ;
 and_expr       = not_expr { "and" not_expr } ;
 not_expr       = "not" not_expr | comparison ;
-comparison     = additive [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) additive ] ;
+comparison     = additive [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) additive
+                          | "is" state_test ] ;
+state_test     = "null" | "unknown" | "known" ;
 additive       = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative = unary { ( "*" | "/" | "%" ) unary } ;
 unary          = "-" unary | primary ;
-primary        = INT | FLOAT | STRING | BOOL | IDENT | "(" expr ")" ;
+primary        = INT | FLOAT | STRING | BOOL | "null" | IDENT | "(" expr ")" ;
 
 (* Comparison does not chain: `a < b < c` is E2005, not `(a < b) < c`.
    Declarations have no terminator; one ends where the next keyword begins,

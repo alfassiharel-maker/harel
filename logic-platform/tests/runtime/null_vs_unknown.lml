@@ -1,0 +1,8 @@
+# `null` is a known absence; `unknown` is a lack of information. They are
+# different answers, and they stay different all the way to the output.
+fact recorded = null
+
+rule absent: when recorded is null then note = "no value was recorded"
+rule never: when recorded is known then amount = 10
+
+output recorded, note, amount

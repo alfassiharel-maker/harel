@@ -86,17 +86,18 @@ row's status.
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
 | **`Unknown` is not `false`** | A rule reading an underived name is *pending*, retried next round | **OD-2, 2026-08-12** | **APPROVED — OWNER DECISION** | Settled, and now stronger than what is implemented: the approved model has *three* conditions, not two. |
-| **`Null` is a distinct, known state** — the system knows there is no value | **Does not exist.** No `Value` variant, no type, no literal, no operator behaviour | **OD-2** | **APPROVED — OWNER DECISION; NOT IMPLEMENTED** | The single largest gap between approved semantics and the engine. Its representation is O2.1, and every operator's behaviour against it is O2.2–O2.4. |
-| The three conditions are never silently collapsed | **Violated once**: the trace JSON writes `Unknown` as JSON `null` | **OD-2 (2d)** | **APPROVED — OWNER DECISION; VIOLATED IN CODE** | `crates/trace/src/json.rs`, `OutputEmitted`. Already wrong under OD-2, independent of how `Null` is finally represented. |
-| `Unknown` is not a value — it is a property of the environment; `Null` is a value | Half-implemented: `Unknown` behaves this way, `Null` is absent | OD-2 implies the asymmetry but does not state it | **OPEN DESIGN DECISION (O2.9)** | Determines whether `Unknown` can be stored in a fact, passed to an operator, or written in source. |
-| An output nothing derived is `unknown` | `status = unknown` | **OD-2** for the distinction; the *spelling* is mine | **APPROVED** (the state) / **OPEN (O2.7)** (how the three are rendered in text, JSON and trace) | Observable in every program's output. |
+| **`Null` is a distinct, known state** — the system knows there is no value | `Value::Null`, the `null` literal, `Type::Null` | **OD-2**, O2.1 | **APPROVED — IMPLEMENTED — VERIFIED** | Placement decided by O2.1: a state in the value model, not a per-type modifier. `Type::Null` unifies with every type. |
+| The three conditions are never silently collapsed | Tagged JSON (`{"state":"Unknown"}`), distinct text spellings, distinct operator results | **OD-2 (2d)** | **APPROVED — IMPLEMENTED — VERIFIED** | The earlier violation (bare JSON `null` for `Unknown`) is fixed, with a test that no state encodes as bare `null`. |
+| `Unknown` is not storable or writable; `Null` is both | `FactSet::insert` rejects `Unknown`; `null` is a literal, `unknown` is not | O2.9, decided under delegated authority from OD-2's wording | **DECIDED — IMPLEMENTED** | `fact a = unknown` would assert a value is known to be not known. The word exists only after `is`. |
+| An output nothing derived is `unknown`; one derived as absent is `null` | `x = unknown`, `y = null` | **OD-2**; spelling decided (O2.7) | **APPROVED — IMPLEMENTED — VERIFIED** | Observable in every program's output, and in the fixtures. |
+| Existence predicates `is null` / `is unknown` / `is known` | Total; never fail | Owner instruction §6, syntax chosen under delegated authority | **APPROVED — IMPLEMENTED — VERIFIED** | The escape hatch that makes the strict model usable. |
 | A condition must be of type `Bool`; there is no truthiness | `when 1` is `E3011` | Not specified | **ASSUMED BY IMPLEMENTATION** | Rejects programs the specification never forbade. |
 
 ## 4. Conjunction and disjunction
 
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
-| `and` / `or` **do not short-circuit** over `Unknown` | `false and <unknown>` is `NotEvaluable`, not `false` | Not specified. Followed from `Unknown != false`, which OD-2 has now approved — but OD-2 requires behaviour to be defined for **all three** states, and the current two-state behaviour is not that definition | **OPEN DESIGN DECISION (O2.4)** | A full truth table for `and`, `or` and `not` over `true`/`false`/`Null`/`Unknown` is required. Kleene three-valued logic remains a live alternative. Unresolved. |
+| `and` / `or` **do not short-circuit**; `Null` in a boolean position is `E5006` | Per the approved truth table | **O2.3/O2.4 — approved 2026-08-12** | **APPROVED — IMPLEMENTED — VERIFIED** | The full 4×4 tables are in `docs/VALUE_AND_LOGIC_TRUTH_TABLE.md` §7, each cell tested. Kleene absorption was considered and rejected: it would make firing depend on operand order. |
 | `and`/`or` are left-associative, `or` looser than `and` | Standard precedence | Not specified; conventional | **ASSUMED BY IMPLEMENTATION** | Low risk, but it is syntax, and syntax is open (§54). |
 | Comparison does not chain (`a < b < c` is `E2005`) | Rejected with a suggestion | Not specified | **ASSUMED BY IMPLEMENTATION** | Low risk. |
 
@@ -105,10 +106,10 @@ row's status.
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
 | Incompatible conclusions raise an explicit `Conflict`; no implicit resolution | `E4001`, execution stops | **OD-3, 2026-08-12** — the §23 design review has now happened | **APPROVED — OWNER DECISION** | Settled in direction. |
-| The conflict report carries id, rules, conclusions, relevant facts, relevant conditions, execution context, trace references | Carries rules, values and a span only | **OD-3 (3c)** | **APPROVED — OWNER DECISION; PARTIALLY IMPLEMENTED** | Five of seven required elements are missing. |
-| Whether a `Conflict` is fatal | Execution stops at the first one | OD-3 says execution "enters a Conflict condition"; it does not say whether the run ends | **OPEN DESIGN DECISION (O3.1, O3.2)** | Determines whether one run can report several conflicts. |
+| The conflict report carries id, rules, conclusions, relevant facts, relevant conditions, execution context, trace references | All seven, in `ConflictReport` and the `ConflictRaised` trace event | **OD-3 (3c)** | **APPROVED — IMPLEMENTED — VERIFIED** | Conflict ids are `C1`, `C2`, … in occurrence order — deterministic, so two runs of one program agree. |
+| Whether a `Conflict` is fatal | Execution stops at the first one, with the full report and the partial trace | OD-3 left it open; decided under delegated authority | **DECIDED — IMPLEMENTED** | Continuing would leave a name silently unbound, indistinguishable from a rule that legitimately did not fire. Revisit if a `collect-all-conflicts` mode is ever specified. |
 | What counts as "logically incompatible" | Equal values ⇒ `DerivationRedundant`; different ⇒ conflict | OD-3's wording supports the equal-value case; `Null` vs `Known` is undefined | **APPROVED** (equal values are not a conflict) / **OPEN (O3.3)** (`Null` cases) | — |
-| Future strategies are explicit, and never silently change existing programs | No strategy mechanism exists | **OD-3 (3d)** | **APPROVED — OWNER DECISION; NOT IMPLEMENTED** | The seam is one match arm; where a strategy is *selected* is O3.5. |
+| Future strategies are explicit, and never silently change existing programs | `trait ConflictStrategy` with one implementation, `RaiseConflict` | **OD-3 (3d)** | **APPROVED — IMPLEMENTED** | The seam exists; nothing selects a different strategy, because no other strategy has been specified. Where one would be *selected* remains O3.5. |
 | A rule may not derive a name a `fact` declares (`E3004`) | Rejected statically | Not specified | **ASSUMED BY IMPLEMENTATION** | Depends on fact immutability. |
 
 ## 6. Rule ordering and scheduling
@@ -189,7 +190,7 @@ row's status.
 | Decision | Current behavior | Source of decision | Status | Consequence |
 |---|---|---|---|---|
 | The language is typed | Yes | §17: *"המערכת צריכה להיות typed"* | **EXPLICITLY_SPECIFIED** | Settled. |
-| Exactly four types: `Int`, `Float`, `Bool`, `String` | Closed set | §17 lists eight candidate primitives and requires a decision before implementation. **OD-2 has now added `Null` to the language**, but not said where it sits in the type lattice | **OPEN DESIGN DECISION (O2.1)** — and the four-type set is now known to be incomplete | Is `Null` an inhabitant of every type (SQL-style), its own type, or a nullability modifier? Each answer is a different type system. |
+| Four concrete types plus the `Null` state | `Int`, `Float`, `Bool`, `String`; `Type::Null` unifies with all of them | §17 for "typed"; **O2.1** for `Null`'s placement | **APPROVED — IMPLEMENTED — VERIFIED** | Collections (`List`, `Map`, `Record`) remain undecided and absent. |
 | Types are **static, inferred, monomorphic**; no annotations | Inference from defining expression | §54 lists *Type System Details* as open | **OPEN DESIGN DECISION** | Affects every future extension. |
 | **No implicit conversion**, in particular `Int`/`Float` | `1 + 1.0` is `E3012` | Not specified | **ASSUMED BY IMPLEMENTATION** | Rejects programs many users would expect to work. Defensible, unapproved. |
 | Cross-type equality is a **type error**, not `false` | `1 == 1.0` is `E3012` | Not specified | **ASSUMED BY IMPLEMENTATION** | Same. |
@@ -239,17 +240,20 @@ that promotes them. The distinction is exactly §3 of the audit brief.
 
 ## Summary of counts
 
-| Status | Count | Change since the audit |
+| Status | Count | Change |
 |---|---|---|
-| **APPROVED — OWNER DECISION** | **11 rows** | new (OD-1, OD-2, OD-3) |
+| **APPROVED — OWNER DECISION** | **17 rows** | OD-1, OD-2, OD-3, O2.1, O2.3/O2.4, O2.5, O2.11 |
+| **DECIDED — delegated engineering authority** | **6 rows** | O2.6, O2.7, O2.9, O2.12, O2.13, O3.1 — each documented where it lands |
 | EXPLICITLY_SPECIFIED | 8 | — |
 | DERIVED FROM SPECIFICATION | 6 | — |
-| **ASSUMED BY IMPLEMENTATION** | **24** | 7 rows promoted to APPROVED |
-| **OPEN DESIGN DECISION** | **13 + 19 new sub-decisions** | O1.1–O1.5, O2.1–O2.9, O3.1–O3.5, listed in the impact map |
+| **ASSUMED BY IMPLEMENTATION** | **18** | six more promoted |
+| **OPEN DESIGN DECISION** | **13 + 8 sub-decisions** | O1.1–O1.5 (Observation/State), O2.8 (SQL `NULL`), O3.2, O3.4, O3.5 |
 
-Three decisions closed; nineteen opened beneath them. That is the normal shape of
-a real semantic decision — settling *what* `Null` is raises every question about
-how it behaves — and it is why the impact map exists before any code moves.
+Under the autonomous engineering mandate of 2026-08-12, decisions in the
+**DECIDED** row were made by the engineer, not the owner: each is a consequence
+required to make an approved principle coherent, each is recorded here with its
+reasoning, and each is reversible by an owner decision. Decisions that would
+change the language's identity remain in the OPEN row and are not being made.
 
 Thirty-one assumptions and thirteen decisions the specification reserved for its
 owner are embedded in working, tested code. The tests prove the engine does what

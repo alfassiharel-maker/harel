@@ -8,7 +8,7 @@
 use lml_compiler::compile;
 use lml_diagnostics::Code;
 use lml_runtime::{run, Execution, Limits};
-use lml_trace::{why, Emitted};
+use lml_trace::why;
 use lml_types::Value;
 
 fn execute(source: &str) -> Execution {
@@ -34,10 +34,7 @@ fn the_canonical_program_produces_the_specified_result() {
          output status\n",
     );
     assert_eq!(execution.to_text(), "status = \"hot\"");
-    assert_eq!(
-        execution.output("status"),
-        Some(&Emitted::Known(Value::Str("hot".into())))
-    );
+    assert_eq!(execution.output("status"), Some(&Value::string("hot")));
     assert_eq!(execution.rules_fired, 1);
 }
 
@@ -182,6 +179,115 @@ fn execution_is_deterministic_down_to_the_trace() {
     assert_eq!(first.trace, second.trace);
     assert_eq!(first.facts, second.facts);
     assert_eq!(first.to_text(), second.to_text());
+}
+
+#[test]
+fn a_rule_reading_a_null_is_evaluable_and_may_fire() {
+    // Owner decision O2.5: `null` is known, so the rule is evaluable — unlike
+    // an unbound name, which leaves it pending.
+    let execution = execute(
+        "fact missing = null\n\
+         rule found: when missing is null then note = \"absent\"\n\
+         output note\n",
+    );
+    assert_eq!(execution.to_text(), "note = \"absent\"");
+    assert_eq!(execution.rules_fired, 1);
+}
+
+#[test]
+fn null_and_unknown_are_different_answers() {
+    // The distinction survives all the way to the output.
+    let execution = execute(
+        "fact known_absent = null\n\
+         rule never: when known_absent is known then derived = 1\n\
+         output known_absent, derived\n",
+    );
+    assert_eq!(
+        execution.to_text(),
+        "known_absent = null\nderived = unknown"
+    );
+}
+
+#[test]
+fn a_pending_rule_is_distinguishable_from_a_false_one() {
+    // Owner decision O2.11: unknown is pending, not false, and the trace says so.
+    let execution = execute(
+        "fact a = 1\n\
+         rule false_rule: when a > 99 then x = 1\n\
+         rule pending_rule: when missing_input > 0 then y = 1\n\
+         rule source: when a > 99 then missing_input = 5\n\
+         output x, y\n",
+    );
+    let text = execution.trace.to_text();
+    assert!(
+        text.contains("ConditionEvaluated false_rule -> false"),
+        "{text}"
+    );
+    assert!(
+        text.contains("RulePending pending_rule waiting for missing_input"),
+        "{text}"
+    );
+    assert_eq!(execution.rules_pending, 1);
+}
+
+#[test]
+fn using_a_null_as_a_number_is_a_structured_error() {
+    // `amount` is typed `Int` — one rule derives an Int, another derives null —
+    // so this type-checks and the absence is only discovered at run time.
+    let source = "fact a = 1\n\
+                  rule present: when a > 99 then amount = 7\n\
+                  rule absent: when a == 1 then amount = null\n\
+                  rule scale: when amount is null then doubled = amount * 2\n\
+                  output doubled";
+    assert_eq!(failure(source), Code::NullNotArithmetic);
+}
+
+#[test]
+fn a_statically_known_null_misuse_is_caught_before_execution() {
+    // When the type checker can see it, it says so at compile time instead.
+    let compilation =
+        compile("fact amount = null\nrule r: when amount is null then d = amount * 2\noutput d");
+    assert_eq!(
+        compilation.err().map(|d| d.as_slice()[0].code),
+        Some(Code::OperatorTypeMismatch)
+    );
+}
+
+#[test]
+fn the_conflict_report_carries_what_od3_requires() {
+    let compilation = compile(
+        "fact a = 1\n\
+         rule first: when a > 0 then s = 5\n\
+         rule second: when a == 1 then s = 6\n\
+         output s\n",
+    )
+    .unwrap_or_else(|d| panic!("compiles: {d}"));
+    let failure = run(&compilation.ir, Limits::new()).expect_err("conflicts");
+
+    let report = failure
+        .trace
+        .events()
+        .iter()
+        .find_map(|event| match &event.kind {
+            lml_trace::TraceEventKind::ConflictRaised(report) => Some(report.clone()),
+            _ => None,
+        })
+        .expect("the conflict is recorded in the trace");
+
+    assert_eq!(report.id, "C1");
+    assert_eq!(report.name, "s");
+    assert_eq!(report.existing.rule.as_deref(), Some("first"));
+    assert_eq!(report.incoming.rule.as_deref(), Some("second"));
+    assert_eq!(report.existing.value, Value::int(5));
+    assert_eq!(report.incoming.value, Value::int(6));
+    assert_eq!(report.relevant_facts, vec![("a".to_owned(), Value::int(1))]);
+    assert_eq!(
+        report.relevant_conditions.len(),
+        2,
+        "both rules' conditions"
+    );
+    assert_eq!(report.round, 1);
+    assert_eq!(report.trace_refs.len(), 3);
 }
 
 #[test]

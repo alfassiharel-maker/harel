@@ -113,11 +113,13 @@ expr         = or_expr ;
 or_expr      = and_expr { "or" and_expr } ;
 and_expr     = not_expr { "and" not_expr } ;
 not_expr     = "not" not_expr | comparison ;
-comparison   = additive [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) additive ] ;
+comparison   = additive [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) additive
+                        | "is" state_test ] ;
+state_test   = "null" | "unknown" | "known" ;
 additive     = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative = unary { ( "*" | "/" | "%" ) unary } ;
 unary        = "-" unary | primary ;
-primary      = INT | FLOAT | STRING | BOOL | IDENT | "(" expr ")" ;
+primary      = INT | FLOAT | STRING | BOOL | "null" | IDENT | "(" expr ")" ;
 ```
 
 Consequences, all deliberate:
@@ -131,6 +133,14 @@ Consequences, all deliberate:
   continue an expression. **[T]**
 - A rule with no `then` clause does not parse (`E2004 RuleWithoutThen`). A rule
   that derives nothing is meaningless, so it is not expressible. **[T]**
+- **State predicates** — `x is null`, `x is unknown`, `x is known` — sit at
+  comparison level and do not chain, for the same reason comparisons do not.
+  They are the language's existence predicates, and they are **total**: every
+  value is in exactly one of the three states of owner decision OD-2, so the
+  answer is always a `Bool` and the predicate can never fail. **[T]**
+- `null` is a literal; **`unknown` is not**. `unknown` is the state of a name
+  nothing has bound, so `fact a = unknown` would assert that a value is known to
+  be not known. The word exists only after `is`. **[T]**
 
 ## 3. Static semantics
 
@@ -199,24 +209,27 @@ together with each entry's origin.
 
 ### 4.1 Expression evaluation
 
-`eval(e, F)` is defined only when every name in `e` is in `dom(F)`. Otherwise
-evaluation yields **`NotEvaluable`**, which is distinct from `false` and from an
-error. **[T]**
+`eval(e, F)` yields a `Value`, which is one of the three conditions. A name not
+in `dom(F)` yields `Unknown` — distinct from `false`, from `Null`, and from an
+error. There is no separate "not evaluable" channel: *not evaluable* **is**
+`Unknown`. **[T]**
 
 ```
-eval(literal v, F)        = v
+eval(literal v, F)        = v                       (`null` is a literal)
 eval(name n, F)           = F(n)                    if n ∈ dom(F)
-                          = NotEvaluable            otherwise
-eval(a ⊕ b, F)            = NotEvaluable            if either side is NotEvaluable
+                          = Unknown                 otherwise
+eval(a ⊕ b, F)            = Unknown                 if either side is Unknown
+                          = Bool(a = b)             if ⊕ ∈ {==, !=}
+                          = error                   if ⊕ ∉ {==, !=} and either side is Null
                           = apply(⊕, eval(a,F), eval(b,F))
-eval(not a, F)            = NotEvaluable            if eval(a,F) is NotEvaluable
+eval(not a, F)            = Unknown                 if eval(a,F) is Unknown
+                          = error E5006             if eval(a,F) is Null
                           = ¬ eval(a, F)
+eval(a is s, F)           = Bool(state(eval(a,F)) = s)   — total, never fails
 ```
 
-`and` and `or` are **not** short-circuiting with respect to `NotEvaluable`:
-`false and x` where `x` is unknown is `NotEvaluable`, not `false`. **[T]**
-*(The corresponding rule for `Null` — and therefore the full truth table over
-`true`/`false`/`Null`/`Unknown` — is **OPEN DESIGN DECISION O2.4**.)*
+`and` and `or` are **not** short-circuiting with respect to `Unknown`:
+`false and x` where `x` is unknown is `Unknown`, not `false`. **[T]**
 *Rationale:* short-circuiting would make a rule's firing depend on the textual
 order of its conjuncts, which is exactly the kind of hidden dependence §1.3 of
 the Constitution forbids. Once every name is known, `and`/`or` are ordinary
@@ -227,6 +240,7 @@ error (no `NaN`, no wrapping, no silent truncation):
 
 | Condition | Error |
 |---|---|
+| ordering, arithmetic or a logical operator applied to `Null` | `E5004`, `E5005`, `E5006` **[T]** |
 | integer overflow in `+ - *` | `E5001 IntegerOverflow` **[T]** |
 | `/` or `%` with integer zero divisor | `E5002 DivisionByZero` **[T]** |
 | `0.0 / 0.0`, `x / 0.0` | `E5002` **[T]** |
@@ -234,14 +248,24 @@ error (no `NaN`, no wrapping, no silent truncation):
 
 ### 4.2 Rule application
 
-> **OPEN DESIGN DECISION O2.5.** Under OD-2, a name bound to `Null` is *known*.
-> Whether that makes a rule reading it **evaluable** — and what its condition
-> then evaluates to — is undecided. The rule below is the two-state form and is
-> incomplete.
+**Owner decision O2.5 — implemented.** A name bound to `Null` is *known*, so a
+rule reading it is evaluable and may fire. There is no separate evaluability
+gate: the condition decides.
 
-A rule `r` is **evaluable** under `F` when every name it reads is in `dom(F)`.
-A rule **fires** when it is evaluable, has not previously fired, and its
-condition evaluates to `true`.
+**Owner decision O2.11 — implemented.** A rule has three outcomes, not two:
+
+```
+condition true    → fire
+condition false   → do not fire
+condition unknown → PENDING: do not fire, reconsider next round
+condition null    → E5006; null is neither true nor false
+```
+
+*Pending* is not *false*, and the difference is visible in the trace as
+`RulePending` beside `ConditionEvaluated`. **[T]**
+
+A rule **fires** when it has not previously fired and its condition evaluates to
+`true`.
 
 Firing `r` evaluates each `then` clause in source order and adds each binding:
 
@@ -258,9 +282,10 @@ condition, never an implicit resolution. The report it must carry is listed in
 of the seven required elements. Whether `Conflict` halts the execution is
 **OPEN DESIGN DECISION O3.1**, so the line above deliberately does not say.
 
-A `then` clause whose expression is `NotEvaluable` at firing time is impossible:
-reads are collected over the whole rule, condition and consequences alike, so an
-evaluable rule has all of them. **[T]**
+A `then` clause whose expression is `Unknown` at firing time is possible — the
+condition need not read every name the consequences do. The clause derives
+nothing (absence already means unknown) and the rule is recorded as pending for
+that name. **[T]**
 
 ### 4.3 Fixed point
 
@@ -298,9 +323,10 @@ what they were waiting for.
 
 An execution produces exactly:
 
-1. `outputs`: an ordered list of `(name, Known(value) | Unknown)` — **incomplete
-   under OD-2**, which requires a third case, `Null`. How the three are rendered
-   in text, JSON and the trace is **OPEN DESIGN DECISION O2.7**;
+1. `outputs`: an ordered list of `(name, Value)`, where `Value` is
+   `Known(v) | Null | Unknown`. The three render as the value itself, `null` and
+   `unknown` in text, and as tagged objects in JSON — never as a bare JSON
+   `null`, which would collapse two of them (**[T]**);
 2. `facts`: the final environment with origins, in name order;
 3. `trace`: the event sequence (`03_EXECUTION_MODEL.md` §7);
 4. or a single structured error, in which case a partial trace is still produced

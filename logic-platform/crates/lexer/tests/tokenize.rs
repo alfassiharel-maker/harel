@@ -83,10 +83,28 @@ fn keywords_are_not_names() {
 
 #[test]
 fn future_keywords_are_reserved() {
-    // §1.4 — so that adding them later is not a breaking change.
+    // §1.4 — so that adding them later is not a breaking change. `null` and
+    // `unknown` were on this list and have now been spent: reserving them is
+    // exactly what let the three-state model arrive without breaking anything.
     assert_eq!(codes("state"), vec![Code::ReservedWord]);
     assert_eq!(codes("query"), vec![Code::ReservedWord]);
-    assert_eq!(codes("null"), vec![Code::ReservedWord]);
+    assert_eq!(codes("module"), vec![Code::ReservedWord]);
+}
+
+#[test]
+fn the_state_vocabulary_lexes() {
+    assert_eq!(kinds("null")[0], TokenKind::Null);
+    assert_eq!(
+        kinds("x is null"),
+        vec![
+            TokenKind::Ident("x".into()),
+            TokenKind::Is,
+            TokenKind::Null,
+            TokenKind::Eof
+        ]
+    );
+    assert_eq!(kinds("x is unknown")[2], TokenKind::Unknown);
+    assert_eq!(kinds("x is known")[2], TokenKind::Known);
 }
 
 #[test]

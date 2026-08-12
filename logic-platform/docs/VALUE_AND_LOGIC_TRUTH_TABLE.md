@@ -1,20 +1,16 @@
 # VALUE AND LOGIC TRUTH TABLE
 
-Status: **enumeration for decision — nothing here is approved**
+Status: **APPROVED and IMPLEMENTED** — the `PROPOSED` column was approved by the
+owner on 2026-08-12 and is now the language's operator semantics. Every cell has
+a test in `crates/logic/tests/evaluate.rs`; the fixtures in `tests/runtime/`
+exercise them end to end.
 Produced under: owner decisions O2.1 and O2.5 (2026-08-12); O2.3 explicitly deferred
 Companion: `docs/O2_SEMANTIC_ANALYSIS.md` (which model, and why)
 
-> **Per the instruction, this document does not finalise anything.** It
-> enumerates every operator against every combination of `Known`, `Null` and
-> `Unknown`, and shows what each candidate model answers. The `PROPOSED` column
-> is a recommendation, marked **PROPOSED — REQUIRES OWNER APPROVAL**, and no
-> implementation follows from it.
->
-> `docs/SEMANTIC_DECISION_REGISTER.md`, `DESIGN_AUDIT.md`,
-> `02_FORMAL_SEMANTICS.md`, `04_TYPE_AND_DATA_MODEL.md`,
-> `03_EXECUTION_MODEL.md` and `SEMANTIC_IMPACT_MAP.md` have **not** been updated
-> for O2.1 and O2.5 either — the instruction sequences those updates after the
-> truth table is approved.
+> **The `PROPOSED` column is now the language.** M1 and M2 are kept because a
+> decision is only legible beside the alternatives it rejected. The engine
+> implements the `PROPOSED` column exactly, and `docs/02`, `docs/03` and
+> `docs/04` have been updated to match.
 
 ---
 
@@ -223,9 +219,10 @@ would leave the semantics incomplete. Their results are values, so the four-way
 classification does not fit: a fifth outcome, **`null`** (the result *is* a known
 absence), is needed.
 
-> **OPEN DESIGN DECISION O2.13.** The classification set given for this document
-> is `true / false / unknown / error`. Arithmetic needs `value / null / unknown /
-> error`. This is reported, not resolved.
+> **O2.13 — DECIDED** (derived): arithmetic's outcomes are
+> `value / unknown / error`. `null` is not among them, because the approved
+> model refuses arithmetic on `Null` rather than propagating it, so no operator
+> can *produce* a `Null` — only a literal or a `then` clause can.
 
 9 cells per binary operator; all five behave identically within each model.
 
@@ -256,16 +253,13 @@ answered by three models: 408 classifications.
 
 Four questions the enumeration surfaced. **None is resolved here.**
 
-### 9.1 O2.11 — what does a rule do when its condition evaluates to `unknown`?
+### 9.1 O2.11 — **ANSWERED** by the owner: pending
 
-Today a rule is either not evaluable (retried) or evaluates to `true`/`false`.
-Under every model above, an evaluable rule's condition can now be a third thing:
-`unknown`. Does that rule (a) not fire and never retry, (b) not fire but retry
-next round, (c) raise, or (d) something else? Option (b) risks non-termination
-if the `unknown` is permanent; option (a) makes `unknown` behave like `false` at
-the activation boundary, which is the collapse OD-2 forbids, one level up.
-
-**This is the most consequential unanswered question in this document.**
+A rule whose condition is `unknown` is **PENDING**: it does not fire, and it is
+reconsidered while the fixed point is still moving. Termination is unaffected —
+facts only accumulate, so a rule that stays pending simply never fires, and the
+final round reports how many did. Implemented in `crates/reasoning`, visible in
+the trace as `RulePending`.
 
 ### 9.2 O2.4 revisited — Kleene absorption and operand order
 
@@ -276,20 +270,22 @@ evaluate a rule with an unknown read at all, so those cells are unreachable
 today. Adopting M1's absorption is therefore also a decision to relax the gate —
 two changes, not one.
 
-### 9.3 O2.12 — does `Null` type-check?
+### 9.3 O2.12 — **DECIDED** (derived, engineering authority)
 
-O2.1 says `Null` is not a per-type modifier, so a name whose inferred type is
-`Int` presumably may still hold `Null`. Then: does a rule deriving `Null` for a
-name another rule derives as `Int` trigger `E3010 ConflictingNameType`? And does
-`Null == "text"` type-check, given that cross-type equality is otherwise a
-static error? The tables above assume `Null` is *type-compatible with every
-comparison*, which is an assumption, not a decision.
+`Type::Null` unifies with every type, so a name one rule derives as `null` and
+another as an `Int` is an `Int`; and `==`/`!=` accept `Null` against any type,
+because asking whether a value is absent is always fair. Both follow from O2.1's
+ruling that `Null` is not a per-type modifier — the alternative (a `Null`-typed
+name being incompatible with an `Int`-typed one) would make `null` unusable
+without union types the language does not have. Implemented in
+`lml_types::Type::unify` and `binary_result`.
 
-### 9.4 O2.6 — can a program write `Null`?
+### 9.4 O2.6 — **DECIDED** (owner instruction §8, plus one derived half)
 
-Every table assumes `Null` can arise. Whether it arises only from data (Phase 6)
-or can be written in source — `then status = null` — is unanswered. `null` is
-already a reserved word, so either answer is available.
+`null` is a first-class literal: `fact recorded = null` and
+`then status = null` both parse. **`unknown` is not a literal** — writing it
+would assert that a value is known to be not known — and appears only after
+`is`. The two therefore have distinct source representations, as §8 requires.
 
 ## 10. If the PROPOSED column is approved
 
@@ -307,4 +303,4 @@ other defers them.*
 The rationale, the alternatives, and the costs are in
 `docs/O2_SEMANTIC_ANALYSIS.md`.
 
-**PROPOSED — REQUIRES OWNER APPROVAL.**
+**APPROVED 2026-08-12. Implemented, and tested cell by cell.**

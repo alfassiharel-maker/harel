@@ -1,10 +1,27 @@
 # SEMANTIC IMPACT MAP — owner decisions 1–3
 
-Status: **analysis only — no implementation code has been changed**
+Status: **implemented** — the O2 decisions were applied on 2026-08-12; this
+document is kept as the record of what they touched, with each row marked
 Input: the three owner decisions of 2026-08-12 (fact mutability, `Unknown`/`Null`/`Known`, conflict policy)
 Output: what each decision requires of each subsystem, and what it cannot require yet
 
 ---
+
+## 0a. What has since been implemented
+
+| Requirement | State |
+|---|---|
+| Three-state `Value` (`Unknown` / `Null` / `Known`) | **DONE** — `lml_types::Value` |
+| `null` literal, `is null` / `is unknown` / `is known` | **DONE** — lexer, parser, AST, IR, evaluator |
+| Operator semantics of the approved truth table | **DONE** — `crates/logic/src/eval.rs`, tested cell by cell |
+| `E5004` / `E5005` / `E5006` for `Null` misuse | **DONE** |
+| Pending rules (O2.11) | **DONE** — `crates/reasoning`, `RulePending` in the trace |
+| Tagged JSON: no state encoded as bare `null` | **DONE** — `crates/trace/src/json.rs` |
+| Conflict report with OD-3's seven elements | **DONE** — `ConflictReport`, `ConflictRaised` |
+| `ConflictStrategy` seam with `RaiseConflict` default | **DONE** — `crates/reasoning/src/conflict.rs` |
+| Execution id + timing, excluded from trace equality | **DONE** — `TraceMetadata` (resolves C1) |
+| `Observation` / `State` as `Origin` categories | **NOT DONE** — deliberately: O1.1 and O1.2 are unspecified, and a variant nothing can produce is a placeholder |
+| SQL `NULL` mapping (O2.8) | **OPEN** — blocks Phase 6, not this work |
 
 ## 0. Summary
 

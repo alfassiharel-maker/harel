@@ -10,7 +10,11 @@ use lml_types::{Type, Value};
 /// Bumped whenever the IR's structure changes, so a stored or transmitted IR
 /// can be rejected rather than misread. It is independent of the language
 /// version: a syntax change that lowers to the same IR does not bump it.
-pub const IR_VERSION: u32 = 1;
+///
+/// * `1` — the two-state model (`Known`/absent).
+/// * `2` — the three-state value model of owner decision OD-2, and the
+///   `is-null` / `is-unknown` / `is-known` operations.
+pub const IR_VERSION: u32 = 2;
 
 /// A rule, as an index in source order.
 ///

@@ -172,15 +172,18 @@ run(ir, limits) -> ExecutionResult:
         fired_any ← false
         for rule in ir.rules:                # source order
             if ctx.rule_state.has_fired(rule.id): continue
-            if not ctx.facts.knows_all(rule.reads):
-                trace.rule_not_evaluable(rule.id, missing_names)
-                continue
+            # No evaluability gate: a name bound to `null` is known, so the
+            # condition itself decides (owner decision O2.5). An unbound name
+            # reaches the evaluator as `Unknown` and propagates.
             match eval(rule.condition, ctx.facts):
-                NotEvaluable  ⇒ unreachable — reads were checked (E5099 if hit)
-                False         ⇒ trace.rule_condition_false(rule.id)
-                True          ⇒ trace.rule_activated(rule.id)
-                                 for effect in rule.effects: apply
-                                 mark fired; fired_any ← true
+                Unknown  ⇒ trace.condition_evaluated(rule, Unknown)
+                            trace.rule_pending(rule, missing_names)
+                Null     ⇒ E5006 — null is neither true nor false
+                False    ⇒ trace.condition_evaluated(rule, False)
+                True     ⇒ trace.condition_evaluated(rule, True)
+                            trace.rule_activated(rule, reads)
+                            for effect in rule.effects: apply
+                            mark fired; fired_any ← true
         trace.round_finished(round, fired_any)
         if not fired_any: break
     else:
@@ -231,19 +234,26 @@ read instead of a machine.
 TraceEvent { seq: u64, kind: TraceEventKind }
 ```
 
-`seq` starts at 0 and increments by 1. There is **no timestamp** — a timestamp
-would make the trace non-deterministic and therefore not comparable, which is the
-whole point of having it. Timings are metrics, emitted separately.
+`seq` starts at 0 and increments by 1. **No event carries a timestamp**, so two
+runs of one program produce equal traces.
+
+Wall-clock data is not discarded, though: `TraceMetadata` carries an
+`execution_id`, a start time and a duration, and it is **excluded from trace
+equality**. Master Spec §10 requires both `Execution ID` and `Timing`; owner
+instruction §10 requires semantic identity not to depend on the clock. Both hold
+at once, which resolves audit contradiction C1 — the earlier design dropped a
+specified field to protect comparability, when it only needed to separate them.
 
 Event kinds in 0.1:
 
 | Kind | Payload |
 |---|---|
 | `ExecutionStarted` | `ir_version`, `program_digest`, `language_version` |
+| `ConflictRaised` | the seven elements of §6a |
 | `FactDeclared` | `name`, `value` |
 | `RoundStarted` | `round` |
-| `RuleNotEvaluable` | `rule`, `missing: [name]` |
-| `ConditionEvaluated` | `rule`, `result: bool` |
+| `RulePending` | `rule`, `waiting_for: [name]` — the condition was `Unknown` |
+| `ConditionEvaluated` | `rule`, `outcome: true \| false \| unknown` |
 | `RuleActivated` | `rule`, `reads` — carried so an explanation needs only the trace |
 | `FactDerived` | `name`, `value`, `rule` |
 | `DerivationRedundant` | `name`, `value`, `rule` (same value already held) |

@@ -1,0 +1,8 @@
+# Ordering asks which of two magnitudes is larger. A known absence has none,
+# so the question is malformed and the engine says so rather than guessing.
+fact threshold = null
+fact score = 10
+
+rule compare: when score > 0 then over = score > threshold
+
+output over

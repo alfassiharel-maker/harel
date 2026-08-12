@@ -10,9 +10,9 @@ systems-engineering project rather than a prototype: `docs/` is the contract,
 `crates/` is the implementation, and the tests are what makes the difference
 between "implemented" and "verified".
 
-> **State: language version 0.1 — the first vertical slice, VERIFIED.**
+> **State: the vertical slice plus the three-state value model, VERIFIED.**
 > Source → lexer → parser → AST → semantic validation → IR → rule engine →
-> runtime → output → trace, with 127 passing tests and zero dependencies.
+> runtime → output → trace, with 159 passing tests and zero dependencies.
 > SQL, state, queries, the IDE and packaging are later phases and are **absent
 > from the tree**, not stubbed.
 
@@ -39,6 +39,26 @@ output status
 status = "hot"
 ```
 
+Absence is first-class:
+
+```lml
+fact recorded = null
+
+rule absent: when recorded is null then note = "no value was recorded"
+rule never:  when recorded is known then amount = 10
+
+output recorded, note, amount
+```
+
+```
+recorded = null
+note = "no value was recorded"
+amount = unknown
+```
+
+`null` and `unknown` are different answers: the first says the system knows
+there is nothing, the second says it does not know.
+
 The interesting part is not the answer. It is that the engine can be asked
 **why**:
 
@@ -60,21 +80,22 @@ cargo run -q -p lml-cli -- trace examples/temperature.lml
 ```
 
 ```
-   0 ExecutionStarted language=0.1 ir=1 program=ec777c22…
+   0 ExecutionStarted language=0.1 ir=2 program=05cfcb0c…
    1 FactDeclared temperature = 31
    2 RoundStarted 1
    3 ConditionEvaluated heat -> true
    4 RuleActivated heat reads temperature
    5 FactDerived status = "hot" by heat
-   6 RoundFinished 1 fired=true
+   6 RoundFinished 1 fired=true pending=0
    7 RoundStarted 2
-   8 RoundFinished 2 fired=false
+   8 RoundFinished 2 fired=false pending=0
    9 OutputEmitted status = "hot"
-  10 ExecutionFinished rounds=2 facts=2 fired=1
+  10 ExecutionFinished rounds=2 facts=2 fired=1 pending=0
 ```
 
-No timestamps: two runs of one program produce byte-identical traces, which is
-what makes a trace comparable, diffable and testable.
+No event carries a timestamp, so two runs of one program produce equal traces —
+what makes a trace comparable, diffable and testable. Timing is not lost: the
+execution id and duration live in metadata that trace equality excludes.
 
 ## Read these first, in order
 
@@ -83,18 +104,22 @@ what makes a trace comparable, diffable and testable.
 | 1 | [`docs/01_LANGUAGE_CONSTITUTION.md`](docs/01_LANGUAGE_CONSTITUTION.md) | What the language *is*: fact, rule, inference, conflicts, determinism |
 | 2 | [`docs/02_FORMAL_SEMANTICS.md`](docs/02_FORMAL_SEMANTICS.md) | The precise, testable rules — lexical, grammar, static, dynamic |
 | 3 | [`docs/03_EXECUTION_MODEL.md`](docs/03_EXECUTION_MODEL.md) | The pipeline, the IR, state ownership, limits, the trace |
-| 4 | [`docs/04_TYPE_AND_DATA_MODEL.md`](docs/04_TYPE_AND_DATA_MODEL.md) | The four types, `Unknown`, the operator table |
+| 4 | [`docs/04_TYPE_AND_DATA_MODEL.md`](docs/04_TYPE_AND_DATA_MODEL.md) | The value model, the four types, the operator table |
+| — | [`docs/VALUE_AND_LOGIC_TRUTH_TABLE.md`](docs/VALUE_AND_LOGIC_TRUTH_TABLE.md) | Every operator against `Known` / `Null` / `Unknown`, cell by cell |
+| — | [`docs/SEMANTIC_DECISION_REGISTER.md`](docs/SEMANTIC_DECISION_REGISTER.md) | Who decided what: approved, derived, assumed, or open |
 | 5 | [`docs/05_ARCHITECTURE.md`](docs/05_ARCHITECTURE.md) | Crates, responsibilities, the enforced dependency graph |
 | — | [`docs/OPEN_DESIGN_DECISIONS.md`](docs/OPEN_DESIGN_DECISIONS.md) | What is decided, what is open, and three weaknesses in the spec |
 | — | [`docs/STATUS.md`](docs/STATUS.md) | SPECIFIED / IMPLEMENTED / VERIFIED, per component |
 
 ## Three ideas the design is built on
 
-**Unknown is not false.** A rule that reads a name nothing has derived yet is not
-*false* — it is *not yet evaluable*, and it is retried. An output nothing derived
-is `unknown`, not `0` and not `""`. This is what lets the engine distinguish "the
-answer is no" from "I do not know", which is the distinction most rule engines
-lose.
+**Three states, never collapsed.** `Known(v)`, `null` (known to be absent) and
+`unknown` (not enough information) are distinct everywhere — in evaluation, in
+output, in JSON. A rule whose condition is `unknown` is *pending*, not false: it
+is reconsidered rather than quietly failing. `null` answers existence questions
+(`null == null` is `true`) and refuses magnitude, arithmetic and truth, so an
+absent value produces a diagnostic instead of a plausible wrong answer. Ask
+about any of it with `x is null`, `x is unknown`, `x is known`.
 
 **A silent winner is a bug.** Two rules deriving different values for one name is
 an error (`E4001`), not a race resolved by source order or an undeclared

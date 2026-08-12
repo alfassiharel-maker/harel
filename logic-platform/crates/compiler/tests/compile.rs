@@ -30,7 +30,7 @@ fn the_canonical_program_lowers_to_this_ir() {
     let compilation = compile(CANONICAL).unwrap_or_else(|d| panic!("compiles: {d}"));
     assert_eq!(
         print_ir(&compilation.ir),
-        "ir_version 1\n\
+        "ir_version 2\n\
          names\n  \
            0 temperature : Int\n  \
            1 status : String\n\
@@ -58,6 +58,49 @@ fn lowering_is_deterministic() {
 fn a_fact_value_is_folded_to_a_constant() {
     let compilation = compile("fact a = 2 * 3 + 1\noutput a").unwrap_or_else(|d| panic!("{d}"));
     assert_eq!(compilation.ir.facts[0].value.to_string(), "7");
+}
+
+#[test]
+fn null_lowers_as_a_constant_and_the_state_tests_as_ops() {
+    let compilation = compile(
+        "fact missing = null\n\
+         rule check: when missing is null then note = missing is known\n\
+         output note",
+    )
+    .unwrap_or_else(|d| panic!("compiles: {d}"));
+    let text = print_ir(&compilation.ir);
+    assert!(text.contains("missing = null"), "{text}");
+    assert!(text.contains("when [load missing; is-null]"), "{text}");
+    assert!(
+        text.contains("then note = [load missing; is-known]"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_null_writer_does_not_conflict_with_a_typed_one() {
+    // `Null` unifies with every type: a name that is sometimes absent and
+    // sometimes an `Int` is an `Int` that can be absent.
+    let compilation = compile(
+        "fact a = 1\n\
+         rule some: when a > 0 then result = 5\n\
+         rule none: when a > 99 then result = null\n\
+         output result",
+    )
+    .unwrap_or_else(|d| panic!("compiles: {d}"));
+    assert!(print_ir(&compilation.ir).contains("result : Int"));
+}
+
+#[test]
+fn null_still_has_no_magnitude_at_compile_time() {
+    assert_eq!(
+        codes("fact a = null + 1\noutput a"),
+        vec![Code::OperatorTypeMismatch]
+    );
+    assert_eq!(
+        codes("fact a = 1\nrule r: when a > null then b = 1\noutput b"),
+        vec![Code::OperatorTypeMismatch]
+    );
 }
 
 #[test]
