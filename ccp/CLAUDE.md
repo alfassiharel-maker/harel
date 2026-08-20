@@ -8,39 +8,35 @@ The repository root is an **unrelated product** (see §0 and §22). Its own cont
 
 ---
 
-## §0. STOP — read before any CCP work
+## §0. Status of this document — read first
 
-**Verified 2026-08-20. No CCP implementation exists anywhere reachable from this session.**
+**A working vertical slice exists.** All four layers are implemented and the full
+pipeline runs end to end: real base and target → streaming → blocks → C++
+XOR/POPCOUNT → Julia cost decision → FULL/DELTA → CCP container → reconstruction →
+SHA-256 → byte-for-byte verification. Verified 2026-08-20 by `make all` from a
+clean tree (§22).
 
-Evidence, so the next agent does not repeat the search:
-
-| Check | Result |
-|---|---|
-| `grep -ri "copy, change, paste\|differential binary\|ccp"` over the whole tree | 0 hits |
-| `find` for `*.rs *.cpp *.hpp *.cc *.jl Cargo.toml CMakeLists.txt` | 0 files |
-| Same search across **every commit on every branch** (`git rev-list --all`) | 0 files |
-| Filesystem outside the workspace (`/home`, `/root`, `/workspace`) | no CCP directory |
-| Connected repositories for this account (`list_repos`) | exactly one: `alfassiharel-maker/harel` — the sports platform |
-
-Therefore: **everything in this document that describes CCP behaviour is intent, not fact.**
-Every claim carries a status label (§ below). `[SPECIFIED]` means *the maintainer decided it*,
-never *the code does it*.
+What that does **not** mean: the product thesis is unvalidated. Everything runs on
+synthetic, position-aligned artifacts. The measurement that would tell us whether
+CCP helps on real ML checkpoints has not been done (§23.2, §24 question 1). Working
+machinery and a validated product are different claims, and this document keeps
+them apart.
 
 ### Status labels used throughout
 
 | Label | Meaning |
 |---|---|
-| `[SPECIFIED]` | Decided by the maintainer's CCP specification. Authoritative for intent. No code. |
-| `[IMPLEMENTED]` | Verified working code exists. **Currently used zero times in this document.** |
-| `[PARTIAL]` | Some real code exists, incomplete. **Currently used zero times.** |
-| `[NOT YET IMPLEMENTED]` | Specified, but no code. |
-| `[UNKNOWN]` | The specification does not settle this. **The answer is to ask the maintainer, not to choose.** |
+| `[IMPLEMENTED]` | Verified working code, exercised by a passing test. |
+| `[PARTIAL]` | Real code exists and works, but the component is incomplete against its intent. |
+| `[SPECIFIED]` | Decided by the maintainer's CCP specification; no code yet. |
+| `[NOT YET IMPLEMENTED]` | Specified, no code. |
+| `[UNKNOWN]` | Not settled by the specification. **Ask the maintainer; do not choose.** |
+| `[DECIDED-BY-BUILD]` | An open question the implementation had to answer to exist. Working, and **awaiting ratification** — see §26. |
 | `[CONFLICT]` | Two sources disagree; recorded with which one wins. |
 
-**Never upgrade a label without verifying the code.** Turning `[SPECIFIED]` into
-`[IMPLEMENTED]` on the strength of intent is exactly the drift this document exists to prevent.
-
----
+**Never upgrade a label without running the code.** Turning `[SPECIFIED]` into
+`[IMPLEMENTED]` on the strength of intent is the drift this document exists to
+prevent.
 
 ## §1. CCP project identity
 
@@ -49,7 +45,7 @@ never *the code does it*.
 | **Name** | CCP — Copy, Change, Paste | `[SPECIFIED]` |
 | **Category** | Differential Binary Versioning & Storage Infrastructure | `[SPECIFIED]` |
 | **Explicitly NOT** | an XOR demo / an XOR compression script | `[SPECIFIED]` |
-| **Home repository** | none — no dedicated CCP repo exists. Drafted here under `ccp/`. | `[UNKNOWN]` (see §24) |
+| **Home repository** | none of its own; lives under `ccp/` inside an unrelated repository | `[UNKNOWN]` (§24 q16) |
 | **Languages** | Python (control), C++ (bit execution), Rust (data/storage), Julia (strategy) | `[SPECIFIED]` |
 | **Maintainer language** | writes Hebrew; **repository artefacts stay in English** — code, comments, docs, commit messages | `[SPECIFIED]` |
 
@@ -188,7 +184,7 @@ bytes. Prefer *change representation* for the concept, *DELTA decision* for the 
 
 ---
 
-## §9. Intended architecture · `[SPECIFIED]` boundaries, `[NOT YET IMPLEMENTED]` everywhere
+## §9. Architecture · `[IMPLEMENTED]`
 
 ```
                   ┌─────────────────────────────────┐
@@ -213,32 +209,40 @@ Dependency rules that follow, and must hold:
 - **Python must not bypass Rust** to touch storage, nor bypass C++ to compute bits.
 - **No cycles.** If a design needs C++ to call back into Rust, the design is wrong.
 
-Cross-language transport (FFI / IPC / shared memory / files): `[UNKNOWN]` — §24.
+**Cross-language transport** — `[DECIDED-BY-BUILD]`, §26:
+* Rust → C++: **static linking over the C ABI**. `dataeng/build.rs` compiles
+  `bitexec/src/bitexec.cpp` and links it; all `unsafe` lives in `dataeng/src/bitexec.rs`.
+* Python → Rust and Rust → Julia: **subprocess boundaries speaking JSON**. Chosen
+  because it keeps memory ownership entirely inside Rust, turns an engine crash into
+  a reportable error rather than an interpreter fault, and costs one process launch
+  on work measured in seconds. The Julia launch is 0.47s and is currently the
+  dominant cost of a small store (§22) — the first thing to revisit if write
+  throughput matters.
 
 ---
 
-## §10. Intended responsibility of each language · `[SPECIFIED]`
+## §10. Responsibility of each language · `[SPECIFIED]` intent, `[IMPLEMENTED]` code
 
-### Python — Application / Control Plane · `[NOT YET IMPLEMENTED]`
+### Python — Application / Control Plane · `[IMPLEMENTED]` (`control/`)
 CLI, API, orchestration, jobs, configuration, UI/API boundary, monitoring.
 **Must not become the native bit-processing core.** Python coordinates; it does not loop over
 buffers.
 
-### C++ — Bit Execution Engine · `[NOT YET IMPLEMENTED]`
+### C++ — Bit Execution Engine · `[IMPLEMENTED]` (`bitexec/`)
 XOR, POPCOUNT, comparison, masks, bit operations, SIMD, native execution.
 **Must perform real operations on real buffers** — not a wrapper, not a stub, not a demo.
 
-### Rust — Data / Storage Engine · `[NOT YET IMPLEMENTED]`
+### Rust — Data / Storage Engine · `[IMPLEMENTED]` (`dataeng/`)
 Streaming, file I/O, buffer management, block processing, storage, CCP format, reconstruction,
 integrity, version management. **It owns the bytes.**
 
-### Julia — Strategy / Mathematical Engine · `[NOT YET IMPLEMENTED]`
+### Julia — Strategy / Mathematical Engine · `[IMPLEMENTED]` (`strategy/`)
 Cost model, representation selection, thresholds, policy, encoding decisions.
 **Decides mathematically. Must not become the primary file-storage layer.**
 
 ---
 
-## §11. Intended data flow · `[SPECIFIED]`
+## §11. Data flow · `[IMPLEMENTED]`
 
 Full specified pipeline:
 
@@ -253,7 +257,7 @@ Mapped onto the layers — **write path:**
 ```
 artifact bytes
   → [Rust]  stream in, split into fixed-size blocks
-  → [Rust]  select candidate Base from the version graph      ← selection policy [UNKNOWN], §24
+  → [Rust]  the Base is named by the caller (--base)          ← automatic selection [UNKNOWN], §24 q12
   → [C++]   per block: XOR(base_block, target_block), POPCOUNT
   → [Rust]  assemble the change representation
   → [Julia] cost analysis: FULL vs encoded delta vs other, including chain cost
@@ -279,111 +283,174 @@ decision by what it does to the read path.
 
 ---
 
-## §12. Intended block model · `[SPECIFIED]` in principle, `[UNKNOWN]` in every parameter
+## §12. Block model · `[IMPLEMENTED]`, parameters `[DECIDED-BY-BUILD]`
 
-Specified: comparison and bit execution operate on **fixed-size blocks**, with contiguous
-buffers and cache-friendly access (§20).
+Fixed-offset blocks; each block makes its own representation decision, so a large
+artifact with one changed region does not force one choice for the whole thing.
 
-Not settled — do not choose these unilaterally:
+| Parameter | Value | Status |
+|---|---|---|
+| Default block size | 1 MiB (`store::DEFAULT_BLOCK_SIZE`), `--block-size` overrides | `[DECIDED-BY-BUILD]` — large enough that the 32-byte index entry is negligible, small enough that one changed region does not force a large FULL block. **Not tuned against real workloads.** |
+| Boundaries | fixed offset, not content-defined | `[IMPLEMENTED]` — follows from XOR's position alignment (§23.2) |
+| Tail handling | a short final block is a block of its logical length; nothing is padded | `[IMPLEMENTED]`, tested at sizes 1, 2, `bs-1`, `bs`, `bs+1`, `2bs+7` |
+| Per-block measurements | `changed_bits` and `changed_bytes` retained in the container | `[IMPLEMENTED]` — so a decision stays explainable without recomputation |
 
-- Block size (a specific value), and whether it is global, per-artifact, or configurable.
-- Tail handling when an artifact is not a whole multiple of the block size.
-- Whether block boundaries are fixed-offset (implied by XOR's position alignment) or
-  content-defined. **Content-defined chunking is a different technique with different costs;
-  adopting it is a maintainer decision, not an implementation detail.** See §23.
-- Whether per-block popcount is retained as metadata or discarded after the decision.
-
----
-
-## §13. Intended storage model · `[SPECIFIED]` in principle, `[UNKNOWN]` in detail
-
-Specified: Rust owns storage; each version is stored either FULL or as Base + Delta, chosen by
-cost; integrity is verifiable.
-
-Not settled: on-disk organisation, whether deltas are stored inline or separately, retention,
-garbage collection, concurrency, and whether an artifact's blocks can be shared across
-versions.
+Content-defined chunking remains **`[UNKNOWN]`** and is a maintainer decision, not
+an implementation detail: it is a different technique with different costs.
 
 ---
 
-## §14. Intended version model · `[SPECIFIED]` in principle, `[UNKNOWN]` in detail
+## §13. Storage model · `[IMPLEMENTED]`
 
-- Versions form a **version graph**. FULL nodes are roots; DELTA nodes reference a Base.
-- Every DELTA node must reach a FULL ancestor (I5).
-- **Chain length is a first-class cost.** Reconstruction cost grows with it, so the cost model
-  must price it, not only the bytes. Without this, the system optimises storage into unusable
-  read latency — the classic fatal failure mode of delta stores.
+```
+<repo>/manifest.json          the version graph, JSON, written atomically via rename
+<repo>/objects/<id>.ccp       one container per version
+```
 
-Not settled: graph vs strict chain; may a delta chain against another delta; re-anchoring /
-rebasing strategy; garbage collection; branching semantics.
+Version ids are derived, not random: `SHA-256(content_hash ‖ name ‖ created_at)`
+truncated to 16 bytes, so there is no RNG dependency.
 
----
-
-## §15. Intended CCP format · `[SPECIFIED]` that it exists, `[NOT YET IMPLEMENTED]`, and **undesigned**
-
-There is **no** container layout, header, magic bytes, block descriptor, checksum placement, or
-format-version scheme. Nothing about the format has been designed.
-
-**Why this is the most stability-critical artifact in the product:** a format mistake is written
-into stored data and is not fixable the way code is. It deserves a written specification, and a
-**format-version field from the very first byte**, before anything is written to disk in anger.
+`[NOT YET IMPLEMENTED]`: garbage collection, retention, concurrent access (two
+writers on one repository are not serialised), block sharing across versions,
+remote or object storage.
 
 ---
 
-## §16. Intended MVP · `[UNKNOWN]` — not defined by the specification
+## §14. Version model · `[IMPLEMENTED]`
 
-The specification defines the full pipeline (§11) but **does not define an MVP scope**. I am
-deliberately not inventing one.
+- Versions form a graph. Roots hold only FULL blocks; a delta names its base.
+- Every delta reaches a root; `Repository::chain` walks it and **rejects cycles**.
+- **Chain depth is priced by the cost model** (§16), which is what stops the system
+  from optimising storage into unusable read latency.
 
-What an MVP decision must answer — the maintainer's call:
-
-1. Which languages are in the first slice? All four at once means four toolchains and three FFI
-   boundaries before the first byte is stored.
-2. Is the first slice **end-to-end and thin** (ingest → one delta → store → reconstruct →
-   verify, single artifact, fixed block size, one encoding) or **one layer deep**?
-3. Does the MVP include the Julia cost model, or a hard-coded threshold standing in for it?
-   Note I4 — a hard-coded threshold is a *stand-in*, and must be labelled as such, not shipped
-   as the cost model.
-4. Is the MVP required to prove the *thesis* (measurable saving on real checkpoints) or the
-   *mechanism* (correct round-trip)? These lead to very different first tasks.
-
-See §25 for what I would do first, and why it is not code.
+`[NOT YET IMPLEMENTED]`: rebasing / re-anchoring an existing version, branching
+semantics beyond "many versions may share a base", automatic re-rooting when a
+chain grows too deep.
 
 ---
 
-## §17. Intended benchmark model · `[UNKNOWN]` — not defined by the specification
+## §15. CCP format · `[IMPLEMENTED]`, version 1
 
-Not settled, and it matters more than usual here because the product's *claim* is quantitative.
-A benchmark model needs to name:
+**`docs/format-v1.md` is authoritative for the layout.** `dataeng/src/format.rs`
+implements it, and its tests assert the constants against the spec.
 
-- The **corpus**: real ML checkpoints from real training runs, at minimum. Synthetic
-  "similar" files will validate the mechanism and tell you nothing about the thesis, because
-  synthetic similarity is position-aligned by construction (§23).
-- The **metrics**: bytes at rest, bytes moved on write, bytes moved on read, reconstruct
-  latency vs chain length, and `popcount(D)/bits(B)` as the sparsity measure.
-- The **baselines** — and CCP must beat all three to matter: (a) N full copies, (b) each
-  version compressed independently with a standard compressor, (c) a standard compressor over
-  the concatenation, or an existing delta tool.
+```
+Header 128 B │ Block index 32 B × N │ Payloads │ Footer 40 B
+```
 
-Baseline (b) is the one that most often kills naive delta schemes, and it must be measured, not
-argued about.
+- `format_version` at byte 8. Every reader **rejects** an unknown version, unknown
+  flags, bad magic, or offsets that disagree with the header rather than guessing.
+- Block kinds: `FULL`, `DELTA_RAW`, `DELTA_SPARSE`, `IDENTICAL` (empty payload).
+- `DELTA_SPARSE` payload: `u32 count`, then `count × (u32 offset, u8 xor_value)` —
+  5 bytes per changed byte, which is the cost the strategy engine prices.
+- Footer carries SHA-256 of every preceding byte, detecting truncation and
+  corruption independently of whether the content hash matches.
+- `apply_sparse` bounds-checks every offset, so a corrupt or hostile container
+  cannot write outside its block.
+
+**Unequal lengths** — the policy is explicit, with no padding or truncation
+anywhere: a block is delta-eligible only when base and target supply the same
+number of bytes; otherwise it is stored FULL. A version that grows or shrinks
+stores the affected tail block in full and every whole block before it can still
+be a delta.
 
 ---
 
-## §18. Intended testing model · derived from the invariants, `[NOT YET IMPLEMENTED]`
+## §16. MVP — a working vertical slice · `[IMPLEMENTED]`
 
-The specification does not lay out a test strategy. Two properties, however, follow directly
-from §7 rather than from my judgement:
+The specification never defined an MVP scope (it was `[UNKNOWN]`). What was built
+is the thin end-to-end slice: **all four languages, one artifact series, real
+files, byte-exact reconstruction**. `[DECIDED-BY-BUILD]`, §26.
 
-- **Round-trip property test is the primary correctness gate** (I1, I2, I3). For arbitrary A
-  and B: `A XOR (A XOR B) == B`, and end-to-end `reconstruct(store(B)) == B` byte-identical.
-  Cheap, exhaustive by property, and catches the failure that matters most.
-- **Cross-language conformance tests are unavoidable** in a four-language system: the same
-  block XOR'd by the C++ engine and by a reference implementation must agree bit for bit.
-  Without this, a SIMD bug becomes silent data corruption.
+In it:
 
-Everything else — framework choices, CI shape, coverage policy, how the four test runners are
-driven — is `[UNKNOWN]`.
+| Capability | Status |
+|---|---|
+| Streaming ingest, memory independent of artifact size | `[IMPLEMENTED]` |
+| C++ XOR / POPCOUNT with runtime AVX2 dispatch | `[IMPLEMENTED]` |
+| Julia cost model choosing FULL / DELTA_SPARSE / DELTA_RAW / IDENTICAL | `[IMPLEMENTED]` |
+| CCP container v1, version graph, multi-hop chains | `[IMPLEMENTED]` |
+| Reconstruction + SHA-256 + byte-for-byte verification | `[IMPLEMENTED]` |
+| Corruption and truncation detection | `[IMPLEMENTED]` |
+| Python CLI, `doctor`, benchmarking harness | `[IMPLEMENTED]` |
+| Unequal-length artifacts | `[IMPLEMENTED]` |
+
+Deliberately **not** in it: automatic base selection, GC, concurrency, an HTTP API,
+observability beyond CLI output, CI, object storage, content-defined chunking, and
+any measurement on real ML checkpoints.
+
+### The cost model, as implemented (`strategy/src/CCPStrategy.jl`)
+
+```
+effective_cost = storage_weight × stored_bytes
+               + read_amplification_weight × hops × logical_len
+```
+
+where `hops = chain_depth + 1` for any representation that extends the chain, and 0
+for FULL. The lowest-cost **valid** candidate wins; ties go to FULL, because not
+lengthening the chain is strictly better for every future read.
+
+| Parameter | Default | Status |
+|---|---|---|
+| `storage_weight` | 1.0 (the unit) | `[IMPLEMENTED]` |
+| `read_amplification_weight` | 0.05 | `[DECIDED-BY-BUILD]` — **not calibrated against any workload**, an honest placeholder |
+| `max_chain_depth` | 16 | `[DECIDED-BY-BUILD]` — a bound to keep reconstruction finite, not an optimum |
+
+Overridable per run via `CCP_STORAGE_WEIGHT`, `CCP_READ_AMPLIFICATION_WEIGHT`,
+`CCP_MAX_CHAIN_DEPTH`. The chosen parameters are echoed in every response, so a
+stored decision can be re-explained against the exact policy that produced it.
+
+Validity is a correctness question, never economic: FULL is always valid; deltas
+require an equal-length base block; `IDENTICAL` additionally requires zero changed
+bytes. Rust **re-checks** the returned decision against those rules rather than
+trusting the engine, because an invalid choice would produce an unreconstructable
+container.
+
+---
+
+## §17. Benchmark model · `[IMPLEMENTED]` harness, `[NOT YET IMPLEMENTED]` real corpus
+
+`control/ccp/benchmark.py`, driven by `python3 -m ccp benchmark`. Measures against
+three baselines, because "beats storing full copies" is the easy comparison:
+
+1. **Full copies** — the naive system CCP improves on.
+2. **Independent zlib per version** — the baseline that most often defeats a naive
+   delta scheme, and the honest bar to clear.
+3. **Concatenated zlib** — bounds what a compressor could recover from
+   cross-version redundancy. Not a usable versioning system (no random access).
+
+Also reports `changed_bits / total_bits` per version — the sparsity measure that
+predicts whether position-aligned XOR deltas can pay off at all — plus encode and
+decode time and throughput. **Decode is timed too**, deliberately: an encode-only
+benchmark flatters a scheme whose read path is the expensive half.
+
+**The corpus is the missing half.** `make demo` runs on synthetic artifacts that
+are position-aligned by construction *and incompressible*, which makes both zlib
+baselines look artificially weak — random bytes do not compress, real checkpoints
+do. Those numbers demonstrate the machinery, and say nothing about the thesis.
+See §24 question 1.
+
+---
+
+## §18. Testing model · `[IMPLEMENTED]`
+
+Four suites, all run by `make test`. Nothing is mocked: a stub would prove only
+that the stub works, and byte-exactness is the one property a stub cannot
+establish.
+
+| Suite | Command | What it guards |
+|---|---|---|
+| C++ | `make test-bitexec` | `B = A XOR D` and every measurement against a naive reference, at lengths straddling word and vector boundaries (0,1,7,8,9,…,32,33,…,65537). A SIMD tail bug is silent corruption — the worst failure this project has. |
+| Rust | `make test-dataeng` (27 tests) | SHA-256 against NIST vectors incl. the 1,000,000-`a` case, streaming vs one-shot in 9 chunk sizes; format round-trips and rejection of future versions / unknown flags / bad offsets / corrupt sparse payloads; JSON; the FFI is wired to the real engine; the strategy protocol rejects invalid decisions. |
+| Julia | `make test-strategy` | The decision boundaries, computed exactly: sparse wins at 777 changed bytes and FULL at 778 in a 4 KiB block at depth 0. Also dense→FULL, unchanged→IDENTICAL, no-base→FULL, deep chains→FULL, ties→FULL. |
+| Integration | `make test-integration` (21 tests) | The whole stack on real files: byte-for-byte round-trips, a 10-hop chain, unequal lengths both directions, unaligned tails, corruption and truncation detection, manifest survival across reopen, and that every decision carries the strategy engine's own reasoning. |
+
+`assert_roundtrip` in `tests/test_vertical_slice.py` is the load-bearing helper:
+compares bytes, compares hashes, and checks the engine's recorded hash agrees —
+which catches a container that verifies against a wrong-but-consistent digest.
+
+Fixtures are seeded, never `urandom`: an intermittent failure in a byte-exactness
+test is close to undiagnosable.
 
 ---
 
@@ -412,15 +479,36 @@ driven — is `[UNKNOWN]`.
 12. **Keep this document honest.** When code lands, rewrite the sections it obsoletes and
     upgrade the labels. Never leave two competing descriptions of the same thing.
 
+Rules the existing code depends on — breaking one of these breaks something real:
+
+13. **The cost model lives only in `strategy/src/CCPStrategy.jl`.** If a threshold, a
+    weight, or a size comparison that decides a representation appears in Rust, C++
+    or Python, the boundary is broken. `dataeng/src/strategy.rs` sends measurements
+    and validates the answer; it must never compute a cost.
+14. **`docs/format-v1.md` is authoritative for the container.** Change the document
+    and `format.rs` together, and bump `format_version` for any layout change —
+    stored containers must never be reinterpreted under a new meaning.
+15. **All `unsafe` stays in `dataeng/src/bitexec.rs`.** Its wrappers take slices and
+    pass a length no larger than the shortest buffer; keep that property.
+16. **Never return unverified bytes.** Reconstruction hashes its output and deletes
+    it on mismatch. Do not add a fast path that skips verification.
+17. **Do not add a fallback cost model** when Julia is missing (D8). Fail loudly.
+18. **Keep the precompilation workload** at the bottom of `CCPStrategy.jl`. Removing
+    it silently costs ~1.5s per store operation (§22).
+19. **Run `make` before claiming anything works.** Four toolchains, and the
+    integration suite is the only thing that exercises all of them together.
+
 ### Anti-drift procedure — when asked to implement a CCP feature
 
-1. Read this document first.
-2. Identify the target component from §9/§10.
-3. Check whether that component actually exists (it currently does not — §22).
-4. Do **not** search unrelated repository areas. This map says what belongs to CCP; nothing
-   outside `ccp/` does.
-5. If the component is missing, create it in the CCP structure (§21-B).
-6. Update this document when the structure changes materially.
+1. Read this document first, then §21-A for where things live.
+2. Identify the target component from §9/§10 and its file from §21-A.
+3. Check whether it already exists — much now does (§22), so extend rather than
+   recreate.
+4. Do **not** search unrelated repository areas. Nothing outside `ccp/` belongs to
+   CCP.
+5. If a `[DECIDED-BY-BUILD]` choice from §25 is in the way, changing it is allowed —
+   deliberately, and with this document updated.
+6. Run `make` and update the status labels and measurements in §22.
 
 ---
 
@@ -447,181 +535,307 @@ asserting direct control over cache levels is wrong and should be corrected on s
 
 ## §21. Project Map — two strictly separate layers
 
-### A. CURRENT REALITY — what actually exists in this workspace
+### A. CURRENT REALITY — what exists in this workspace
 
 ```
 /home/user/harel/                  ← repository: alfassiharel-maker/harel
 ├── CLAUDE.md, README.md, docs/00-22, backend/, database/, tests/, apps/, ml/
-│      ▲ UNRELATED PROJECT: "AI Sports Coach Platform"
-│        An AI coach for triathletes/runners/cyclists — Python + FastAPI + Postgres.
-│        NOT CCP. Not a component of CCP. Shares no code, concept, or dependency.
-│        Do not modify. Do not reinterpret as CCP. Do not copy its architecture into CCP.
+│      ▲ UNRELATED PROJECT: "AI Sports Coach Platform" (Python/FastAPI/Postgres).
+│        NOT CCP, not a component of CCP, shares no code or concept.
+│        Do not modify. Do not reinterpret as CCP.
 │
-└── ccp/
-    └── CLAUDE.md                  ← this file. THE ONLY CCP ARTIFACT THAT EXISTS.
+└── ccp/                           ← THE CCP PROJECT
+    ├── CLAUDE.md                  this file — context and status register
+    ├── README.md                  how to build and use it
+    ├── Makefile                   the one build entry point for all four toolchains
+    ├── pytest.ini                 isolated so the parent repo's config is not picked up
+    ├── docs/format-v1.md          AUTHORITATIVE for the container layout
+    ├── bitexec/                   C++ bit execution engine
+    │   ├── include/ccp_bitexec.h  the C ABI — the whole contract
+    │   ├── src/bitexec.cpp        scalar + AVX2 paths, runtime dispatch
+    │   ├── tests/test_bitexec.cpp
+    │   └── CMakeLists.txt
+    ├── dataeng/                   Rust data / storage engine
+    │   ├── build.rs               compiles and links the C++ engine
+    │   └── src/
+    │       ├── store.rs           MOST IMPORTANT FILE: repository, write path, read path
+    │       ├── format.rs          container v1 — implements docs/format-v1.md
+    │       ├── bitexec.rs         the only `unsafe` in the project
+    │       ├── strategy.rs        the Julia bridge; contains no cost arithmetic
+    │       ├── sha256.rs          in-tree, NIST-vector tested
+    │       ├── json.rs, error.rs, lib.rs, main.rs
+    ├── strategy/                  Julia strategy engine
+    │   ├── Project.toml            a real package — precompilation, see §22
+    │   ├── src/CCPStrategy.jl      THE COST MODEL — the only place policy lives
+    │   ├── src/MiniJSON.jl         submodule
+    │   ├── bin/ccp_strategy.jl     stdin JSON → stdout JSON
+    │   └── test/runtests.jl
+    ├── control/                   Python control plane
+    │   └── ccp/{cli,engine,config,benchmark}.py
+    ├── scripts/demo.py
+    └── tests/                     integration suite over the real stack
 ```
 
-**CCP implementation found: none.** No Python, C++, Rust, or Julia CCP source. No build system.
-No tests. No benchmarks. No format. No dedicated CCP repository.
-
-### B. CCP TARGET SYSTEM — what CCP is intended to contain · all `[NOT YET IMPLEMENTED]`
-
-Component list from the specification. **The directory names below are placeholders for
-vocabulary only — the layout is `[UNKNOWN]` and unapproved.** Do not cite a path here as though
-it were discovered or decided.
-
-```
-CCP TARGET SYSTEM
-├── Python application / control plane   CLI, API, orchestration, jobs, config, monitoring
-├── C++ bit execution engine            XOR, POPCOUNT, compare, masks, SIMD
-├── Rust data / storage engine          streaming, I/O, blocks, storage, format,
-│                                       reconstruction, integrity, version management
-├── Julia strategy engine               cost model, thresholds, policy, encoding selection
-├── CCP binary format                   container layout — undesigned (§15)
-├── Integration tests                   round-trip, cross-language conformance (§18)
-└── Benchmarks                          corpus, metrics, baselines (§17)
-```
-
-**Never mix layer A and layer B.** A component in B does not exist merely because it is listed.
-
----
-
-## §22. Current implementation reality
+### B. CCP TARGET SYSTEM — intended scope, and what is still missing
 
 | Component | Status |
 |---|---|
-| Python control plane | `[NOT YET IMPLEMENTED]` |
-| C++ bit execution engine | `[NOT YET IMPLEMENTED]` |
-| Rust data / storage engine | `[NOT YET IMPLEMENTED]` |
-| Julia strategy engine | `[NOT YET IMPLEMENTED]` |
-| CCP binary format | `[NOT YET IMPLEMENTED]` — and undesigned (§15) |
-| Version graph | `[NOT YET IMPLEMENTED]` |
-| Cost model | `[NOT YET IMPLEMENTED]` — inputs undefined (§24) |
-| Tests | `[NOT YET IMPLEMENTED]` |
-| Benchmarks | `[NOT YET IMPLEMENTED]` |
-| Build system | `[NOT YET IMPLEMENTED]` |
+| Python control plane | `[IMPLEMENTED]` (CLI); HTTP API, jobs, monitoring `[NOT YET IMPLEMENTED]` |
+| C++ bit engine | `[IMPLEMENTED]` (XOR, POPCOUNT, masks, bit ops, AVX2); AVX-512, threading `[NOT YET IMPLEMENTED]` |
+| Rust data/storage engine | `[IMPLEMENTED]`; GC, concurrency, remote storage `[NOT YET IMPLEMENTED]` |
+| Julia strategy engine | `[IMPLEMENTED]`; calibrated weights, learned policy `[NOT YET IMPLEMENTED]` |
+| CCP binary format | `[IMPLEMENTED]` v1 |
+| Integration tests | `[IMPLEMENTED]` |
+| Benchmarks | `[PARTIAL]` — harness done, real corpus missing (§17) |
 | CI | `[NOT YET IMPLEMENTED]` |
-| Dedicated CCP repository | `[UNKNOWN]` (§24) |
+| Observability | `[NOT YET IMPLEMENTED]` beyond CLI/JSON output |
+| Automatic base selection | `[NOT YET IMPLEMENTED]` — the caller names `--base` |
 
-**Build / test / lint commands: none exist, because nothing is built.**
-Do not invent commands for this section. When a build system lands, record only commands you
-have **executed successfully**, with their real output. A command in a context document that
-does not work is worse than an absent one — the next agent will trust it and lose a cycle.
+**Never mix layer A and layer B.**
 
-There is no legacy code, no generated artifact, and no deprecated path. That is the one
-advantage of this starting point; the first structural decisions will be the hardest to reverse.
+---
+
+## §22. Current implementation reality — verified commands and measurements
+
+Verified on 2026-08-20, x86_64 Linux, 4 cores, from a clean tree (`make clean && make all`).
+
+### Commands that actually work
+
+```bash
+make                  # build everything + run all four suites   ← the one command to know
+make build            # C++ engine + Rust engine (Julia/Python need no build)
+make test             # all four suites
+make doctor           # confirm every component present and runnable
+make demo             # pipeline on generated artifacts + baseline comparison
+
+make test-bitexec     # C++ only
+make test-dataeng     # Rust only  (27 tests)
+make test-strategy    # Julia only (11 testsets)
+make test-integration # Python end-to-end (21 tests)
+```
+
+Single test, per layer:
+
+```bash
+cd dataeng && cargo test --release sha256::tests::nist_vectors
+PYTHONPATH=control python3 -m pytest -c pytest.ini tests -q \
+    -k test_unrelated_data_is_stored_full_not_delta
+julia --startup-file=no strategy/test/runtests.jl     # whole file; no per-testset selection
+./bitexec/build/test_bitexec                          # whole binary
+```
+
+Note `-c pytest.ini`: without it pytest finds the parent repository's config and
+runs nothing.
+
+### Toolchain versions used
+
+Rust 1.94.1 · g++ 13.3.0 (C++17) · CMake 3.28.3 · Julia 1.11.3 · Python 3.11.15.
+**No third-party libraries in any layer** — SHA-256 and both JSON implementations
+are in-tree, deliberately (see the note in `dataeng/Cargo.toml`).
+
+### Measurements — real numbers, from the demo above
+
+On five 4 MiB synthetic artifacts, 256 KiB blocks, four in-place-modified versions
+plus one unrelated:
+
+| | |
+|---|---|
+| Sparse version stored | ~0.01 MiB of 4 MiB (deltas chosen) |
+| Unrelated version | stored FULL — the cost model **refused** a delta that would have cost ~5× |
+| Whole series | 8.02 MiB stored for 20 MiB logical |
+| Encode | 7.0 MiB/s |
+| Decode | 42.9 MiB/s |
+| Reconstruction | byte-for-byte identical, all five |
+| Corrupted container | detected, exit code 3 |
+
+**Read the encode number honestly.** 7 MiB/s is *not* the bit engine's speed; it is
+dominated by the Julia process launch at ~0.47s per store operation. That 0.47s is
+itself down from 2.0s: the strategy engine was made a real Julia package with a
+precompilation workload in the module body (`strategy/src/CCPStrategy.jl`), which
+moves first-call JIT into the build. Removing that workload silently costs 1.5s per
+store.
+
+Largest artifact exercised end to end: 8 MiB. The streaming design means memory
+does not scale with artifact size, but **multi-gigabyte artifacts have not been
+tested**, and neither has anything near the 100 GB the specification targets.
 
 ---
 
 ## §23. Security / integrity requirements, and dangerous assumptions
 
-### Integrity requirements · `[SPECIFIED]`
+### Integrity requirements · `[IMPLEMENTED]`
 
-- Lossless, byte-identical reconstruction, always (I2, I3).
-- Content hash recorded at ingest, verified after every reconstruction. **Hash algorithm, and
-  whether it is per-block, per-version or both: `[UNKNOWN]`.**
-- Integrity failure is a hard error (I7).
-- Format-version field present from the first byte written (§15).
+- Lossless, byte-identical reconstruction (I2, I3) — asserted by every integration test.
+- **SHA-256 per version**, recorded at ingest and verified after every reconstruction.
+  A mismatch **deletes the output** rather than returning an unverified file.
+  Per-block hashing remains `[UNKNOWN]` and was not needed for v1.
+- **SHA-256 of the container itself** in the footer, checked before any read, so
+  truncation and corruption are caught independently of the content hash.
+- Integrity failure is a hard error (I7): its own Rust variant, its own Python
+  exception type, and **exit code 3** so the control plane can distinguish "stored
+  data is wrong" from "you asked for the wrong thing".
+- `format_version` at byte 8, present from the first byte ever written (§15).
+- `apply_sparse` bounds-checks every offset: a hostile container cannot write out of
+  bounds. All `unsafe` is confined to `dataeng/src/bitexec.rs`, whose wrappers take
+  slices and pass a length no larger than the shortest buffer.
 
-Security beyond integrity — encryption at rest, access control, multi-tenant isolation, untrusted
-input hardening: **`[UNKNOWN]`, not addressed by the specification.** Worth noting that a
-delta-decoder consuming attacker-influenced files is a memory-safety surface, and that this is
-precisely the argument for Rust owning I/O and C++ receiving only validated, sized buffers.
+Beyond integrity — encryption at rest, access control, multi-tenant isolation,
+signed containers: `[NOT YET IMPLEMENTED]`, and not addressed by the specification.
+The relevant hardening already in place is structural: Rust owns all I/O and
+parsing, and C++ only ever receives validated, sized buffers.
+
 
 ### DANGEROUS ASSUMPTIONS — read before writing CCP code
 
 Items 1–3 are mathematical facts, not opinions. Each can invalidate the product thesis if built
 on unexamined.
 
-**23.1 — "XOR reduces size." It does not.**
+**23.1 — "XOR reduces size." It does not.** `[still true, and now handled]`
 `A XOR B` is *exactly* the same length as B. Raw XOR saves nothing at all. The saving comes
 entirely from D being **sparse** (mostly zero) and therefore compressing or sparse-encoding
 well. **The encoding step is where the product's value is realised, not the XOR.** Any plan
 whose savings come from "XOR" without a named encoding is storing the same number of bytes with
-extra steps.
+extra steps. This is why `DELTA_SPARSE` exists and why `DELTA_RAW` almost never wins: raw XOR
+ties with FULL on size and loses on chain cost.
 
-**23.2 — "Similar versions produce sparse deltas." Only if changes are position-aligned.**
+**23.2 — "Similar versions produce sparse deltas." Only if changes are position-aligned.** `[UNVALIDATED — the single biggest open risk]`
 One inserted byte near the start shifts every subsequent byte, and `A XOR B` becomes dense noise
 — often *less* compressible than B itself. Whether the target artifacts are alignment-preserving
 is an **empirical question that should be measured on real files before the engine is built
 around XOR.** For ML checkpoints it is plausible — fixed tensor layouts, same shapes, weights
-changing in place — and plausible is not measured.
+changing in place — and plausible is not measured. **The working vertical slice does not change
+this at all:** every artifact it has been run on was position-aligned by construction, so the
+demo's results are a property of the test data, not evidence about the workload.
 
-**23.3 — "Versions are the same length." XOR is undefined otherwise.**
+**23.3 — "Versions are the same length." XOR is undefined otherwise.** `[handled]`
 Padding, truncation and tail handling all change the result and all need a decided, documented
-policy. Silent padding is a correctness bug waiting to violate I3.
+policy. The policy is now explicit (§15) and tested in both directions: unequal-length blocks are
+stored FULL, and nothing is ever padded or truncated.
 
-**23.4 — "Delta chains are cheap to read." They are not.**
+**23.4 — "Delta chains are cheap to read." They are not.** `[priced, with an uncalibrated weight]`
 Each hop is I/O plus an XOR pass over the full artifact. A long chain can make reconstruction
-slower than having stored FULL copies while the storage graph still looks like a win. Price
-chain length in the cost model (§14) or the system optimises itself into unusability.
+slower than having stored FULL copies while the storage graph still looks like a win. The cost model prices it (§16) via `read_amplification_weight`, and `max_chain_depth`
+bounds it absolutely — but that weight is an uncalibrated placeholder, so *how well* it is priced
+is still unknown.
 
-**23.5 — "Python is fine for the first version."**
+**23.5 — "Python is fine for the first version."** `[avoided]`
 A Python prototype of the bit path will set the block sizes, buffer shapes and API that C++ then
 inherits — and Python's convenient shapes are frequently the ones that defeat SIMD and locality.
-I6 exists for this reason. A Python prototype is **throwaway measurement, never the reference
-implementation.**
+I6 exists for this reason. It was honoured: there is no bit loop anywhere in `control/`, and the
+block sizes and buffer shapes were set by the Rust and C++ layers.
 
-**23.6 — "Four languages is a starting point."**
+**23.6 — "Four languages is a starting point."** `[paid, and it showed up exactly where predicted]`
 Four languages means four toolchains, three FFI boundaries and a CI matrix before the first byte
-is stored. The boundaries in §10 are the maintainer's decision and stand — but the **order of
-construction is `[UNKNOWN]`**, and it is the highest-leverage open decision right now.
+is stored. The boundaries in §10 are the maintainer's decision and stand. The cost landed on the
+cross-language boundary as predicted: the Julia launch is now the dominant cost of a small store
+(§22), and diagnosing it took a real measurement rather than a guess.
 
 ---
 
 ## §24. Open questions
 
-Each is a decision this document deliberately refuses to make. Roughly ordered by leverage.
+Roughly by leverage. Answered ones are marked; the rest are still maintainer calls.
 
-**Concept validation — these decide whether the rest is worth building**
-1. Are real target artifacts (ML checkpoints especially) **position-aligned** between versions?
-   What do `popcount(A XOR B)` and `compressed_size(D)` vs `compressed_size(B)` actually show on
-   real files? (§23.2)
-2. What **encoding** turns a sparse D into a real saving — sparse block index, RLE, general
-   compression, something else? This is where the value is (§23.1).
-3. Does CCP beat "just compress each version independently"? (§17 baseline b)
+**Concept validation — still decides whether any of this is worth building**
+1. ⬜ **THE question.** Are real target artifacts (ML checkpoints especially)
+   position-aligned between versions? What do `popcount(A XOR B)/total_bits` and
+   `stored_delta` vs `compressed_size(B)` show on *real* checkpoint pairs? The
+   harness to answer this exists (`ccp benchmark`); the corpus does not. (§23.2)
+2. 🟡 **Partly answered.** `DELTA_SPARSE` at 5 bytes per changed byte is
+   implemented and works. Whether a bitmap, RLE, or compressed delta beats it on
+   real change patterns is unmeasured — the format has room for more kinds.
+3. ⬜ Does CCP beat "compress each version independently" on real data? The
+   baseline is measured, but only on incompressible synthetic data so far (§17).
 
-**Cost model — blocks the Julia layer entirely**
-4. What exactly is "cost"? Bytes at rest, bytes moved, reconstruct latency — which, weighted how?
-5. Does chain length enter the cost function, with what weight? (§23.4)
-6. FULL-vs-DELTA thresholds: static, per-artifact, or learned?
+**Cost model**
+4. 🟡 Cost is `storage + read_amplification_weight × hops × bytes`. Whether that
+   is the right shape, and what the weight should be, needs a real workload. (§16)
+5. ✅ Chain length enters the cost function, weighted, plus a hard depth bound.
+6. ⬜ Should thresholds be static, per-artifact, or learned?
 
 **Format, blocks, storage**
-7. Design the CCP format before or after a throwaway prototype? (§15)
-8. Block size, and global vs per-artifact? Tail handling? (§12)
-9. Unequal-length versions — what policy? (§23.3)
-10. Integrity hash algorithm; per-block, per-version, or both?
-11. Version graph vs strict chain; may a delta chain against a delta; rebasing; GC? (§14)
+7. ✅ The format was specified before any bytes were written (`docs/format-v1.md`).
+8. 🟡 Block size defaults to 1 MiB, overridable. Not tuned. (§12)
+9. ✅ Unequal lengths: eligible only on equal-length blocks; no padding. (§15)
+10. 🟡 SHA-256 per version and per container. Per-block hashing not implemented —
+    is it wanted?
+11. 🟡 A version graph with cycle detection exists; deltas may chain on deltas.
+    Rebasing, GC and branching semantics are open.
 
 **Base selection**
-12. How is a Base chosen for a new version — immediate predecessor, nearest by a cheap distance
-    measure, most recent FULL? This likely dominates the achieved ratio in practice.
+12. ⬜ The caller names `--base`. How should a base be chosen automatically —
+    predecessor, nearest by a cheap distance measure, most recent FULL? This
+    likely dominates the achieved ratio in practice.
 
 **Engineering**
-13. Cross-language transport: FFI, IPC, shared memory, files? (§9)
-14. Build system — one driver for all four toolchains, or one per layer?
-15. **Build order:** which layer first, and what is the smallest end-to-end slice that proves
-    the thesis? (§16, §23.6)
-16. Does CCP stay in this repository long-term, or move to its own? A dedicated repo would let
-    `ccp/CLAUDE.md` become a root `CLAUDE.md` and remove the unrelated-neighbour hazard entirely.
+13. ✅ Transport: static C ABI link Rust↔C++; JSON subprocesses elsewhere. Revisit
+    the Julia boundary if write throughput matters (§22).
+14. ✅ One `Makefile` drives all four toolchains.
+15. ✅ Build order answered by building the thin end-to-end slice first.
+16. ⬜ Does CCP stay in this repository, or move to its own? Moving would let
+    `ccp/CLAUDE.md` become a root `CLAUDE.md` and remove the unrelated-neighbour
+    hazard entirely.
+
+**New, raised by the implementation**
+17. ⬜ Concurrency: two writers on one repository are not serialised. Needs a lock
+    or a documented single-writer constraint.
+18. ⬜ Storing against a base reconstructs that base first, so a store at depth *d*
+    walks *d* hops. Acceptable now; a cache or a re-anchoring policy may be needed.
+19. ⬜ Should the strategy engine become a long-lived process (or an in-process
+    library) to remove the 0.47s per-store launch?
 
 ---
 
-## §25. Project roadmap / status
+## §25. Decisions made by the implementation — awaiting ratification
 
-**Current milestone: pre-implementation. Context established; nothing built.**
+These were `[UNKNOWN]` in the specification and had to be answered for code to
+exist. Each works and is tested; **none has been approved.** Change any of them
+freely if the maintainer decides differently — but change them deliberately, and
+update this document.
 
-- Product concept, invariants, terminology, language boundaries: **`[SPECIFIED]`** (§2–§11, §19, §20).
-- Block/storage/version models: `[SPECIFIED]` in principle, `[UNKNOWN]` in every parameter (§12–§14).
-- CCP format: `[NOT YET IMPLEMENTED]` and undesigned (§15).
-- MVP, benchmark model: `[UNKNOWN]` — not defined by the specification (§16, §17).
-- Code, build, tests, CI: **none** (§22).
+| # | Decision | Where | Cost of changing it later |
+|---|---|---|---|
+| D1 | Container layout v1 (128 B header, 32 B index entries, 40 B footer) | `docs/format-v1.md`, `format.rs` | **High** — written into stored data. Mitigated by `format_version` from byte 8. |
+| D2 | `DELTA_SPARSE` = 5 bytes per changed byte | `format.rs` | Medium — a new kind can be added alongside it. |
+| D3 | Cost = storage + `0.05 ×` read amplification; `max_chain_depth` 16 | `CCPStrategy.jl` | **Low** — one file, env-overridable. The right place to iterate. |
+| D4 | Default block size 1 MiB | `store.rs` | Low — per-store flag, recorded in each container. |
+| D5 | Transport: static link Rust↔C++, JSON subprocess elsewhere | `build.rs`, `strategy.rs`, `engine.py` | Medium. |
+| D6 | No third-party libraries; SHA-256 and JSON in-tree | `Cargo.toml`, `MiniJSON.jl` | Low. |
+| D7 | Version ids = `SHA-256(content ‖ name ‖ time)[0..16]` | `store.rs` | Medium — ids appear in the manifest and in filenames. |
+| D8 | Julia is a hard dependency; **no fallback cost model** | `strategy.rs` | Low, and deliberate: a second policy implementation would drift from the real one and mask its absence. |
+| D9 | Ties in the cost model resolve to FULL | `CCPStrategy.jl` | Low. |
 
-**The recommended next step is not implementation.** It is open question 1 — a measurement, on
-real artifacts, of whether XOR deltas are actually sparse for the target workload, and how they
-compare against per-version compression. It is cheap, needs no architecture, requires none of
-the four toolchains, and it is the one result that could validate or invalidate the entire design
-before anything is stood up. Building the engine first and measuring afterwards risks four
-toolchains of work resting on §23.2.
+---
 
-That measurement is throwaway code by definition (§23.5) and should be labelled as such.
+## §26. Project roadmap / status
+
+**Current milestone: working vertical slice. Thesis unvalidated.**
+
+| | |
+|---|---|
+| All four layers, end to end, byte-exact | ✅ `[IMPLEMENTED]` |
+| CCP container format v1, specified then implemented | ✅ |
+| Cost-driven FULL/DELTA decision, refusing bad deltas | ✅ |
+| Integrity: SHA-256 content + container, hard failures | ✅ |
+| 4 test suites green from a clean tree (`make all`) | ✅ |
+| Benchmark harness with three real baselines | ✅ |
+| **Measured on real ML checkpoints** | ❌ **the gap that matters** |
+| Scale beyond 8 MiB artifacts | ❌ |
+| CI, observability, API, GC, concurrency | ❌ |
+
+### What to do next, and why it is not more code
+
+The highest-value next step is **§24 question 1**: run `ccp benchmark` over real
+consecutive checkpoints from a real training run. It needs no new architecture, it
+uses the harness that already exists, and it is the one result that can validate
+or invalidate the whole design. Every engineering decision downstream —
+encoding choice, block size, the cost weights, whether content-defined chunking is
+needed at all — is currently being guessed at, and that measurement replaces the
+guesses.
+
+Build more only after it: if checkpoint deltas turn out dense, the position-aligned
+XOR approach needs rethinking before any of it is optimised, and finding that out
+after building the fast paths would be the expensive order.
+
+The second-highest is calibrating `read_amplification_weight` (D3) against measured
+reconstruct latency, since it currently steers every decision on a placeholder.

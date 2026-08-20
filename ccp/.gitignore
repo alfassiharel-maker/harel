@@ -1,0 +1,14 @@
+# Build outputs. Every one of these is reproducible with `make`.
+bitexec/build/
+dataeng/target/
+__pycache__/
+*.pyc
+
+# Julia's precompilation cache lives in ~/.julia, but a local Manifest pins
+# resolved versions per machine and is not meaningful for a dependency-free package.
+strategy/Manifest.toml
+
+# Stored artifacts and repositories, if someone runs a demo in-tree.
+*.ccp
+bench-work/
+.pytest_cache/

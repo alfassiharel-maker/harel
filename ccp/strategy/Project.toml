@@ -1,0 +1,13 @@
+# The strategy engine is a real Julia package, not a script collection.
+#
+# This matters for a measured reason: loaded as loose `include`d files, the module
+# is recompiled on every process launch, which cost ~2.0s per store operation. As
+# a package with a UUID, Julia caches the precompiled module and the same call
+# costs a fraction of that. The engine is invoked once per store, so this is
+# directly on the product's write path.
+name = "CCPStrategy"
+uuid = "6c8f21b4-3d5a-4f7e-9b02-8a1d5e4c7f30"
+version = "0.1.0"
+
+[compat]
+julia = "1.9"

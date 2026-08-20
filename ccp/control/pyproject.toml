@@ -1,0 +1,11 @@
+[project]
+name = "ccp-control"
+version = "0.1.0"
+description = "CCP control plane: CLI, orchestration and benchmarking over the CCP data engine"
+requires-python = ">=3.10"
+# No dependencies: the control plane's whole job is to drive the engine and format
+# results, and the standard library covers subprocesses, JSON and zlib.
+dependencies = []
+
+[project.scripts]
+ccp = "ccp.cli:main"

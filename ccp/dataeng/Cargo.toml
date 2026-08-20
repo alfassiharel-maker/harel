@@ -1,0 +1,23 @@
+[package]
+name = "ccp-dataeng"
+version = "0.1.0"
+edition = "2021"
+description = "CCP data and storage engine: streaming, blocks, container format, version graph, reconstruction, integrity"
+build = "build.rs"
+
+# No dependencies, deliberately. This layer owns stored bytes and the integrity
+# guarantee, so every line of it is auditable, and a crate update can never
+# change what a `.ccp` file means. SHA-256 and the JSON used at the Julia boundary
+# are implemented here and tested against published vectors.
+[dependencies]
+
+[lib]
+name = "ccp_dataeng"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ccp-engine"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
