@@ -1,0 +1,152 @@
+# Footprint policy for the AI Sports Coach platform.
+#
+# Compile:  python3 -m backend.squeeze plan   policies/footprint.sqz
+# Validate: python3 -m backend.squeeze check  policies/footprint.sqz
+# Measure:  python3 -m backend.squeeze verify policies/footprint.sqz --strict
+#
+# Every ratio below is a measured number, not an aspiration: `verify` runs the
+# named implementation over a representative sample and fails the build if the
+# declaration has drifted more than 10% above what the codec actually achieves.
+# Record sizes come from the reviewed schema in database/migrations/; growth
+# rates are the planning assumptions in docs/10-cost-model-and-risks.md.
+#
+# The declarations sit *below* what `verify` measures on the built-in samples, on
+# purpose. Those samples repeat a template, so they compress better than real
+# payload variety does; the declared ratio is the conservative end of what has
+# been seen on exported production-shaped rows. Drift is only ever reported when
+# a declaration is optimistic, which is the direction that costs money.
+
+version 1
+currency ILS
+
+# -----------------------------------------------------------------------------
+# Codecs
+# -----------------------------------------------------------------------------
+codec delta_varint {
+  kind        lossless
+  ratio       6.4
+  cpu         0.6 ms per MiB
+  applies_to  timeseries, relational
+  impl        delta_varint
+}
+
+codec zlib6 {
+  kind        lossless
+  ratio       6.0
+  cpu         2.5 ms per MiB
+  applies_to  document, blob, context
+  impl        zlib
+}
+
+codec lzma6 {
+  kind        lossless
+  ratio       8.0
+  cpu         42 ms per MiB
+  applies_to  document, blob, context
+  impl        lzma
+}
+
+# Quantising twin weights to int8 is the one lossy trade in this policy, and it
+# is confined to a class whose values are model parameters — not measurements an
+# athlete sees. Fidelity is measured, not assumed.
+codec int8 {
+  kind        lossy
+  ratio       3.9
+  fidelity    0.999
+  cpu         0.9 ms per MiB
+  applies_to  tensor
+  impl        int8_quantise
+}
+
+# -----------------------------------------------------------------------------
+# Tiers. Unit costs are managed-service list prices in agorot per GiB per month
+# (docs/10 §3); they are inputs to a comparison, not a quote.
+# -----------------------------------------------------------------------------
+tier hot {
+  medium      memory
+  latency     3 ms
+  unit_cost   3400 minor per GiB per month
+  codecs      delta_varint, zlib6
+}
+
+tier warm {
+  medium      disk
+  latency     60 ms
+  unit_cost   95 minor per GiB per month
+  codecs      delta_varint, zlib6, lzma6, int8
+}
+
+tier cold {
+  medium      object
+  latency     2 s
+  unit_cost   9 minor per GiB per month
+  codecs      delta_varint, lzma6, int8
+}
+
+# -----------------------------------------------------------------------------
+# Data classes
+# -----------------------------------------------------------------------------
+# One row per second per stream (heart rate, power, cadence, altitude). The
+# dominant class by volume and the reason this policy exists.
+class activity_streams : timeseries {
+  record      24 bytes
+  growth      864000 records per user per month
+  retain      hot 7 days, warm 13 months, cold 5 years
+  sensitivity personal
+}
+
+# Wellness and daily metrics feed readiness and injury risk. Clinical: the
+# planner may not quantise these, because the stored value is the value the
+# athlete is shown and the AI reasons over.
+class daily_metrics : relational {
+  record      420 bytes
+  growth      1 records per user per month
+  retain      hot 90 days, warm 5 years, cold 10 years
+  sensitivity clinical
+}
+
+class wellness_readings : relational {
+  record      280 bytes
+  growth      30 records per user per month
+  retain      hot 90 days, warm 5 years, cold 10 years
+  sensitivity clinical
+}
+
+# Activity summaries and lap splits — small, read on every dashboard load.
+class activity_summaries : document {
+  record      2400 bytes
+  growth      18 records per user per month
+  retain      hot 13 months, warm 5 years, cold 10 years
+  sensitivity personal
+}
+
+# Context packets sent to the model, retained for grounding audits (docs/05 §7).
+class ai_context_packets : context {
+  record      14 KiB
+  growth      40 records per user per month
+  retain      hot 7 days, warm 13 months, cold 25 months
+  sensitivity personal
+}
+
+# Digital-twin parameters: one shared model, not per athlete, so the growth
+# scope is `fleet`.
+class twin_checkpoints : tensor {
+  record      48 MiB
+  growth      4 records per fleet per month
+  retain      warm 6 months, cold 3 years
+  sensitivity routine
+}
+
+# -----------------------------------------------------------------------------
+# The policy
+# -----------------------------------------------------------------------------
+policy footprint_v1 {
+  objective   minimise bytes
+  population  25000 users
+  horizon     18 months
+  limit       total 6 TiB
+  limit       per_user 220 MiB
+  require     fidelity >= 0.99
+  require     explanation
+  covers      activity_streams, daily_metrics, wellness_readings, activity_summaries, ai_context_packets, twin_checkpoints
+}

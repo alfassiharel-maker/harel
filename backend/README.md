@@ -5,6 +5,7 @@ Python 3.11 + FastAPI. Structure and rationale in `docs/01-architecture.md` §3.
 ```
 backend/
 ├── algorithms/         ✅ BUILT — analytics engine, stdlib only, 209 tests
+├── squeeze/            ✅ BUILT — footprint policy language, stdlib only, 98 tests (docs/23)
 ├── core/               ✅ BUILT — config, security primitives, errors, logging, tenancy context
 ├── modules/
 │   ├── identity/           ✅ BUILT — auth, users, consent, sessions, audit

@@ -28,6 +28,7 @@ today, how much to rest, why yesterday felt flat, what to improve.
 | 8 | [`docs/08-tech-decisions.md`](docs/08-tech-decisions.md) | ADRs: every choice, what was rejected, when to revisit |
 | 9 | [`docs/09-testing-and-model-governance.md`](docs/09-testing-and-model-governance.md) | Test strategy, algorithm versioning, accuracy measurement |
 | 10 | [`docs/10-cost-model-and-risks.md`](docs/10-cost-model-and-risks.md) | Unit economics at 15 ₪, AI cost model, risk register |
+| 23 | [`docs/23-squeeze-language.md`](docs/23-squeeze-language.md) | **Squeeze** — the footprint policy language that governs storage, memory and model-weight budgets |
 
 ---
 
@@ -35,6 +36,8 @@ today, how much to rest, why yesterday felt flat, what to improve.
 
 ```
 backend/algorithms/        ✅ analytics engine — stdlib only, 209 tests passing
+backend/squeeze/           ✅ footprint policy language — stdlib only, 98 tests passing
+policies/footprint.sqz     ✅ the platform's footprint policy, gated in CI
 tests/algorithms/          ✅ the test suite
 database/migrations/       ✅ 0001–0009, reviewable SQL (NOT applied — see below)
 docs/                      ✅ architecture, DB, API, security, roadmap, ADRs
@@ -52,12 +55,25 @@ verified** before any infrastructure existed.
 No dependencies, no database, no setup:
 
 ```bash
-python3 -m unittest discover -s tests -t .
-# Ran 209 tests in 0.032s — OK
+python3 -m unittest discover -s tests/algorithms -t .   # Ran 209 tests — OK
+python3 -m unittest discover -s tests/squeeze    -t .   # Ran  98 tests — OK
 ```
 
-That the most correctness-critical code in the product tests in 32 ms on a bare
-Python 3.11 is a deliberate property, not an accident.
+That the most correctness-critical code in the product tests in tens of
+milliseconds on a bare Python 3.11 is a deliberate property, not an accident.
+(The suites are discovered per directory because the integration and security
+suites import pytest; discovering `tests/` as a whole fails at import time with
+no dependencies installed.)
+
+## See the footprint budget
+
+Also dependency-free — the language that governs how much room the product's data
+is allowed to occupy (`docs/23`):
+
+```bash
+python3 -m backend.squeeze plan   policies/footprint.sqz    # the plan, with drivers
+python3 -m backend.squeeze verify policies/footprint.sqz    # declared ratios vs measured
+```
 
 ---
 
@@ -80,6 +96,7 @@ See [`database/README.md`](database/README.md) for the review and apply procedur
 | Web | React + TypeScript | — |
 | Backend | Python 3.11 + FastAPI | ADR-001 |
 | Analytics | Python standard library only | ADR-003 |
+| Footprint policy | Squeeze (`.sqz`), compiler in `backend/squeeze/`, stdlib only | docs/23 |
 | ML (Phase 3) | scikit-learn; PyTorch when justified | ADR-004 |
 | Database | PostgreSQL 16 with row-level security | ADR-002, ADR-005 |
 | Cache / queue | Redis + arq | ADR-006 |
@@ -107,6 +124,10 @@ These are enforced by tests and review, not by intention:
    capable of holding a PAN.
 7. **The AI never receives raw data and never computes.** It reasons over derived,
    explained metrics, and every number it states is grounded in them.
+8. **The storage budget is compiled, not estimated.** `policies/footprint.sqz`
+   declares every retention window, codec and byte limit; CI fails when the plan
+   exceeds a limit, when it *cannot prove* it fits, or when a declared
+   compression ratio has drifted above what the codec actually achieves.
 
 ---
 

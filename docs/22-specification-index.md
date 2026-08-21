@@ -1,6 +1,6 @@
 # 22 — Specification Index
 
-**Status:** awaiting approval · **Date:** 2026-07-29 · **Covers:** `docs/00`–`docs/21`
+**Status:** awaiting approval · **Date:** 2026-07-29 · **Covers:** `docs/00`–`docs/23`
 
 The reading order and ownership map for the whole specification. Phase 1 weeks 1–2
 are built and pushed; everything from here is specified and **awaiting approval
@@ -42,6 +42,12 @@ before implementation**.
 | 20 | Scaling Plan: First Users to Millions | 10 | 7,901 |
 | 21 | Module Contracts (all modules, uniform rubric) | — | 7,777 |
 
+### Implemented — tooling (`23`)
+
+| # | Document | Topic |
+|---|---|---|
+| 23 | [Squeeze: the footprint policy language](23-squeeze-language.md) | The `.sqz` language, its compiler in `backend/squeeze/`, the storage/memory/model-weight footprint gate in CI |
+
 ~65,000 words. Each was written against the real Phase 1 code and migrations
 rather than against the earlier design docs, which is why several of them report
 corrections *to* those docs (§4).
@@ -58,6 +64,7 @@ corrections *to* those docs (§4).
 | **Implementing the AI coach** | `14` → `05` → `10` → `19` 0016 |
 | **Building the mobile app** | `16` → `03` → `21` |
 | **Reviewing a migration** | `19` §2 checklist → `19` §3 ledger row |
+| **Changing retention, a codec or a storage budget** | `23` → `policies/footprint.sqz` → `19` §3 |
 | **Reviewing security** | `18` → `06` → `21` per-module security blocks |
 | **Planning capacity** | `20` → `10` |
 | **New engineer, day one** | `00` → `01` → `11` → `21` |

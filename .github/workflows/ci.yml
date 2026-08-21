@@ -24,8 +24,22 @@ jobs:
           python-version: "3.11"
       - name: Assert the engine imports with no third-party packages
         run: python -c "import backend.algorithms as a; print(a.__version__)"
+      - name: Assert the footprint compiler imports with no third-party packages
+        run: python -c "import backend.squeeze as s; print(s.__version__)"
       - name: Run the analytics suite
-        run: python -m unittest discover -s tests -t . -v
+        run: python -m unittest discover -s tests/algorithms -t . -v
+      - name: Run the footprint language suite
+        run: python -m unittest discover -s tests/squeeze -t . -v
+
+      # The footprint gate. `--strict` fails on an exceeded limit and on an
+      # unprovable one: a policy whose coverage dropped below 100% has stopped
+      # showing that the product fits in its storage budget, and that is the
+      # thing this gate exists to catch. `verify` fails when a declared codec
+      # ratio has drifted above what the codec actually achieves.
+      - name: Footprint policy is provably within its limits
+        run: python -m backend.squeeze plan policies/footprint.sqz --strict
+      - name: Declared codec ratios still hold
+        run: python -m backend.squeeze verify policies/footprint.sqz --strict
 
   quality:
     name: Lint, types and architecture contract
@@ -39,7 +53,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: ruff check backend tests
       - run: ruff format --check backend tests
-      - run: mypy --strict backend/algorithms
+      - run: mypy --strict backend/algorithms backend/squeeze
       - name: Architecture contract (docs/01 §3)
         run: lint-imports --config pyproject.toml
 

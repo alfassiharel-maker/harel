@@ -12,13 +12,46 @@ help: ## Show available targets
 # -----------------------------------------------------------------------------
 # Analytics engine — runs with NO dependencies installed. Keep it that way.
 # -----------------------------------------------------------------------------
+# The two suites that run on a bare Python are discovered by directory rather
+# than from `tests/` as a whole: the integration and security suites import
+# pytest, so discovering the whole tree here would fail on import before running
+# a single dependency-free test.
 .PHONY: test-algorithms
 test-algorithms: ## Run the analytics suite with the system Python, zero deps
-	$(PY) -m unittest discover -s tests -t . -v
+	$(PY) -m unittest discover -s tests/algorithms -t . -v
+
+.PHONY: test-squeeze
+test-squeeze: ## Run the footprint language suite, zero deps
+	$(PY) -m unittest discover -s tests/squeeze -t . -v
+
+.PHONY: test-nodeps
+test-nodeps: test-algorithms test-squeeze ## Both dependency-free suites
 
 .PHONY: check-no-deps
 check-no-deps: ## Assert the engine imports with no third-party packages present
 	@$(PY) -c "import backend.algorithms as a; print('analytics engine imports clean, version', a.__version__)"
+	@$(PY) -c "import backend.squeeze as s; print('footprint compiler imports clean, version', s.__version__)"
+
+# -----------------------------------------------------------------------------
+# Footprint policy (Squeeze). Also dependency-free — see docs/23.
+# -----------------------------------------------------------------------------
+POLICY ?= policies/footprint.sqz
+
+.PHONY: sqz-check
+sqz-check: ## Validate the footprint policy
+	$(PY) -m backend.squeeze check $(POLICY)
+
+.PHONY: sqz-plan
+sqz-plan: ## Compile the footprint policy to a reviewable plan
+	$(PY) -m backend.squeeze plan $(POLICY)
+
+.PHONY: sqz-verify
+sqz-verify: ## Measure declared codec ratios against samples; fail on drift
+	$(PY) -m backend.squeeze verify $(POLICY) --strict
+
+.PHONY: sqz-gate
+sqz-gate: ## The CI gate: the plan must be provably within its limits
+	$(PY) -m backend.squeeze plan $(POLICY) --strict
 
 # -----------------------------------------------------------------------------
 # Full environment (after architecture approval)
@@ -56,7 +89,7 @@ fmt: ## Auto-format
 
 .PHONY: types
 types: ## Strict type check on the layers that must not drift
-	$(VENV_PY) -m mypy --strict backend/algorithms backend/modules
+	$(VENV_PY) -m mypy --strict backend/algorithms backend/squeeze backend/modules
 
 .PHONY: lint-arch
 lint-arch: ## Enforce the module dependency contract (docs/01 §3)
@@ -67,7 +100,7 @@ audit: ## Dependency vulnerability audit
 	$(VENV_PY) -m pip_audit -r requirements.txt
 
 .PHONY: ci
-ci: lint types lint-arch test-algorithms test test-security audit ## Everything CI runs
+ci: lint types lint-arch test-nodeps sqz-gate sqz-verify test test-security audit ## Everything CI runs
 
 # -----------------------------------------------------------------------------
 # Local services

@@ -76,6 +76,13 @@ warn_unreachable = true
 module = "backend.algorithms.*"
 strict = true
 
+[[tool.mypy.overrides]]
+# The footprint language compiler holds itself to the same bar for the same
+# reason: it is pure, dependency-free, and its output (a footprint plan) is
+# reviewed as evidence rather than re-derived by hand.
+module = "backend.squeeze.*"
+strict = true
+
 # -----------------------------------------------------------------------------
 # Architecture contract — the layering rule from docs/01 §3, enforced in CI.
 # A violation here is a design regression, not a style issue.
@@ -94,6 +101,26 @@ forbidden_modules = [
     "backend.workers",
     "backend.database",
     "backend.core",
+    "backend.squeeze",
+]
+
+[[tool.importlinter.contracts]]
+# Same rule as the analytics engine, and load-bearing for the same reason: the
+# footprint compiler must stay runnable on a bare Python so `squeeze check` is
+# available in the fastest CI job, in a migration review, and on a laptop with
+# nothing installed. It reads text and returns data structures; if it ever needs
+# to know about a model, a session or a request, the design is wrong.
+name = "The footprint language depends on nothing in this project"
+type = "forbidden"
+source_modules = ["backend.squeeze"]
+forbidden_modules = [
+    "backend.api",
+    "backend.modules",
+    "backend.integrations",
+    "backend.workers",
+    "backend.database",
+    "backend.core",
+    "backend.algorithms",
 ]
 
 [[tool.importlinter.contracts]]
