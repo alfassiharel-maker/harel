@@ -1,0 +1,9 @@
+# Acceptance test from §52 of the Master Directive.
+# The language must derive grandparent(Alice, Charlie) with full provenance.
+
+fact parent("Alice", "Bob");
+fact parent("Bob", "Charlie");
+
+rule grandparent(X, Z) when parent(X, Y), parent(Y, Z);
+
+query grandparent(X, Y);

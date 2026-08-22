@@ -1,0 +1,16 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lgc"
+path = "src/main.rs"
+
+[dependencies]
+parser.workspace = true
+runtime.workspace = true
+diagnostics.workspace = true
+trace.workspace = true
+serde_json.workspace = true

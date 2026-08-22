@@ -1,0 +1,13 @@
+[package]
+name = "reasoning"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+logic.workspace = true
+trace.workspace = true
+types.workspace = true
+diagnostics.workspace = true
+thiserror.workspace = true
+serde.workspace = true

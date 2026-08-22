@@ -1,0 +1,19 @@
+[package]
+name = "runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+logic.workspace = true
+trace.workspace = true
+reasoning.workspace = true
+types.workspace = true
+ast.workspace = true
+diagnostics.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+parser.workspace = true

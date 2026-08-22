@@ -1,0 +1,10 @@
+[package]
+name = "parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+diagnostics.workspace = true
+lexer.workspace = true
+ast.workspace = true

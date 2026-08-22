@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/diagnostics",
+    "crates/types",
+    "crates/lexer",
+    "crates/ast",
+    "crates/parser",
+    "crates/logic",
+    "crates/trace",
+    "crates/reasoning",
+    "crates/runtime",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+
+[workspace.dependencies]
+diagnostics = { path = "crates/diagnostics" }
+types       = { path = "crates/types" }
+lexer       = { path = "crates/lexer" }
+ast         = { path = "crates/ast" }
+parser      = { path = "crates/parser" }
+logic       = { path = "crates/logic" }
+trace       = { path = "crates/trace" }
+reasoning   = { path = "crates/reasoning" }
+runtime     = { path = "crates/runtime" }
+
+thiserror = "2"
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
